@@ -1,0 +1,157 @@
+"use client";
+
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+
+import { useAuth } from "@/lib/auth-context";
+import {
+  createWorkout,
+  deleteWorkout,
+  fetchBenchmarkHistory,
+  fetchWorkout,
+  fetchWorkoutDatesInRange,
+  fetchWorkoutsByDate,
+  updateWorkout,
+} from "@/lib/firestore/workouts";
+import type { Workout, WorkoutInput } from "@/lib/types";
+
+const root = (uid: string) => ["workouts", uid] as const;
+
+export const workoutKeys = {
+  byDate: (uid: string, dateKey: string) =>
+    [...root(uid), "date", dateKey] as const,
+  range: (uid: string, startKey: string, endKey: string) =>
+    [...root(uid), "range", startKey, endKey] as const,
+  single: (uid: string, id: string) => [...root(uid), "single", id] as const,
+  benchmark: (uid: string, benchmarkId: string) =>
+    [...root(uid), "benchmark", benchmarkId] as const,
+};
+
+/** Every write can shift PRs and badges, so derived caches are dropped wholesale. */
+function invalidateAfterWrite(
+  queryClient: ReturnType<typeof useQueryClient>,
+  uid: string,
+) {
+  queryClient.invalidateQueries({ queryKey: root(uid) });
+  queryClient.invalidateQueries({ queryKey: ["prs", uid] });
+}
+
+export function useWorkoutsByDate(dateKey: string) {
+  const { user } = useAuth();
+  const uid = user?.uid;
+
+  return useQuery<Workout[]>({
+    queryKey: workoutKeys.byDate(uid ?? "anonymous", dateKey),
+    queryFn: () => fetchWorkoutsByDate(uid!, dateKey),
+    enabled: Boolean(uid),
+  });
+}
+
+/** Powers the activity dots on the date strip. */
+export function useWorkoutDatesInRange(startKey: string, endKey: string) {
+  const { user } = useAuth();
+  const uid = user?.uid;
+
+  return useQuery<string[]>({
+    queryKey: workoutKeys.range(uid ?? "anonymous", startKey, endKey),
+    queryFn: () => fetchWorkoutDatesInRange(uid!, startKey, endKey),
+    enabled: Boolean(uid),
+  });
+}
+
+export function useWorkout(workoutId: string | undefined) {
+  const { user } = useAuth();
+  const uid = user?.uid;
+
+  return useQuery<Workout | null>({
+    queryKey: workoutKeys.single(uid ?? "anonymous", workoutId ?? ""),
+    queryFn: () => fetchWorkout(uid!, workoutId!),
+    enabled: Boolean(uid && workoutId),
+  });
+}
+
+export function useBenchmarkHistory(benchmarkId: string | null) {
+  const { user } = useAuth();
+  const uid = user?.uid;
+
+  return useQuery<Workout[]>({
+    queryKey: workoutKeys.benchmark(uid ?? "anonymous", benchmarkId ?? ""),
+    queryFn: () => fetchBenchmarkHistory(uid!, benchmarkId!),
+    enabled: Boolean(uid && benchmarkId),
+  });
+}
+
+export function useCreateWorkout() {
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (input: WorkoutInput) => {
+      if (!user) throw new Error("Not signed in");
+      return createWorkout(user.uid, input);
+    },
+    onSuccess: () => {
+      if (user) invalidateAfterWrite(queryClient, user.uid);
+    },
+  });
+}
+
+export function useUpdateWorkout() {
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (args: {
+      workoutId: string;
+      input: WorkoutInput;
+      previousBenchmarkId?: string | null;
+    }) => {
+      if (!user) throw new Error("Not signed in");
+      // Returned so callers can tell a confirmed save from a queued one.
+      return updateWorkout(
+        user.uid,
+        args.workoutId,
+        args.input,
+        args.previousBenchmarkId,
+      );
+    },
+    onSuccess: () => {
+      if (user) invalidateAfterWrite(queryClient, user.uid);
+    },
+  });
+}
+
+export function useDeleteWorkout(dateKey: string) {
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
+  const uid = user?.uid ?? "anonymous";
+  const listKey = workoutKeys.byDate(uid, dateKey);
+
+  return useMutation({
+    mutationFn: async (workout: Pick<Workout, "id" | "linkedBenchmarkId">) => {
+      if (!user) throw new Error("Not signed in");
+      return deleteWorkout(user.uid, workout.id, workout.linkedBenchmarkId);
+    },
+
+    // Removed from the feed immediately — a card that lingers after "Delete"
+    // reads as a failure even when the write is in flight.
+    onMutate: async (workout) => {
+      await queryClient.cancelQueries({ queryKey: listKey });
+      const previous = queryClient.getQueryData<Workout[]>(listKey);
+      queryClient.setQueryData<Workout[]>(
+        listKey,
+        (current) => current?.filter((w) => w.id !== workout.id) ?? [],
+      );
+      return { previous };
+    },
+
+    onError: (_error, _workout, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(listKey, context.previous);
+      }
+    },
+
+    onSettled: () => {
+      if (user) invalidateAfterWrite(queryClient, user.uid);
+    },
+  });
+}

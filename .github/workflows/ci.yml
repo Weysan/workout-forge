@@ -1,0 +1,106 @@
+name: CI
+
+# Runs on every pull request and on direct pushes to main. The deploy workflow
+# waits for this to pass, so a red build never reaches production.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+# A new push to the same PR cancels the previous run.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    name: Typecheck · Lint · Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      # Pure logic, no emulator or build needed — runs before the slow steps.
+      - name: Test offline write handling
+        run: npm run test:offline
+
+      - name: Build
+        # Placeholders are deliberate. This build is a compile check that is never
+        # deployed; the deploy workflow rebuilds with the real repository
+        # variables. Nothing here contacts Firebase, so the values only have to be
+        # non-empty for the config assertion in src/lib/firebase.ts to pass.
+        env:
+          NEXT_PUBLIC_FIREBASE_API_KEY: ci-placeholder
+          NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: ci.firebaseapp.com
+          NEXT_PUBLIC_FIREBASE_PROJECT_ID: ci-placeholder
+          NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: ci.firebasestorage.app
+          NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: "000000000000"
+          NEXT_PUBLIC_FIREBASE_APP_ID: "1:000000000000:web:ci"
+          NEXT_PUBLIC_USE_FIREBASE_EMULATOR: "false"
+        run: npm run build
+
+      - name: Check the static export produced pages
+        run: |
+          test -f out/index.html || { echo "::error::out/index.html missing"; exit 1; }
+          echo "✓ exported $(find out -type f | wc -l | tr -d ' ') files"
+
+      # Verifies the generated precache manifest and the worker's path handling
+      # still agree. When they drift, offline navigation fails silently.
+      - name: Test service worker offline routing
+        run: npm run test:sw
+
+  rules:
+    name: Firestore rules
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # The emulators for Firestore are Java programs.
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Install Firebase CLI
+        run: npm install -g firebase-tools@13
+
+      # Asserts the actual access boundary: a signed-in user can reach only their
+      # own subtree, and malformed documents are rejected. Runs against the
+      # emulator, so no Google credentials are needed.
+      - name: Test security rules
+        run: npm run test:rules

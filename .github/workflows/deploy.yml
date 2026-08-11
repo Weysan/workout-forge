@@ -1,0 +1,191 @@
+name: Deploy
+
+# Production deploy. Runs when a pull request merges into main (a merge is a push
+# to main), and on demand from the Actions tab.
+#
+# Ships three things with one `firebase deploy`:
+#   1. hosting            — the static site built into out/
+#   2. firestore:rules    — the access boundary
+#   3. firestore:indexes  — composite indexes the queries rely on
+#
+# Setup is documented step by step in README.md → "Deploying". In short you need
+# one secret and six variables:
+#
+#   Secret     FIREBASE_SERVICE_ACCOUNT
+#   Variables  FIREBASE_PROJECT_ID
+#              NEXT_PUBLIC_FIREBASE_API_KEY
+#              NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN
+#              NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET
+#              NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID
+#              NEXT_PUBLIC_FIREBASE_APP_ID
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      hosting_only:
+        description: Deploy hosting only, leaving Firestore rules and indexes untouched
+        type: boolean
+        default: false
+
+# Never run two production deploys at once, and never cancel one midway.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  # Gates run first and independently of the deploy, so a red build never ships.
+  # No build here: the deploy job builds with the real config, and building twice
+  # with different config would only invite confusion about which artefact shipped.
+  verify:
+    name: Verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # The Firestore emulator is a Java program.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - run: npm ci --no-audit --no-fund
+
+      - run: npm run typecheck
+
+      - run: npm run lint
+
+      - name: Install Firebase CLI
+        run: npm install -g firebase-tools@13
+
+      - name: Test security rules
+        run: npm run test:rules
+
+  deploy:
+    name: Build and deploy
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: production
+      url: https://${{ vars.FIREBASE_PROJECT_ID }}.web.app
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci --no-audit --no-fund
+
+      - name: Fail early if configuration is missing
+        # A missing variable would otherwise produce a site that builds fine and
+        # then throws "Firebase config is incomplete" in every visitor's browser.
+        # Better to break the deploy than to ship that.
+        env:
+          PROJECT_ID: ${{ vars.FIREBASE_PROJECT_ID }}
+          API_KEY: ${{ vars.NEXT_PUBLIC_FIREBASE_API_KEY }}
+          AUTH_DOMAIN: ${{ vars.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN }}
+          STORAGE_BUCKET: ${{ vars.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET }}
+          SENDER_ID: ${{ vars.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID }}
+          APP_ID: ${{ vars.NEXT_PUBLIC_FIREBASE_APP_ID }}
+          SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          missing=""
+          for name in PROJECT_ID API_KEY AUTH_DOMAIN STORAGE_BUCKET SENDER_ID APP_ID SERVICE_ACCOUNT; do
+            eval "value=\${$name:-}"
+            [ -n "$value" ] || missing="$missing $name"
+          done
+
+          if [ -n "$missing" ]; then
+            echo "::error::Missing repository configuration:$missing"
+            echo "See README.md → Deploying. Variables live in Settings →"
+            echo "Secrets and variables → Actions → Variables; the service"
+            echo "account is a Secret on the same page."
+            exit 1
+          fi
+          echo "✓ all required configuration present"
+
+      - name: Build static site
+        # These are inlined into the JavaScript bundle by `next build`, so they
+        # must be correct HERE — there is no server to read them at runtime. They
+        # are repository *variables*, not secrets: Firebase web config is public
+        # by design and access is enforced by firestore.rules.
+        env:
+          NEXT_PUBLIC_FIREBASE_API_KEY: ${{ vars.NEXT_PUBLIC_FIREBASE_API_KEY }}
+          NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: ${{ vars.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN }}
+          NEXT_PUBLIC_FIREBASE_PROJECT_ID: ${{ vars.FIREBASE_PROJECT_ID }}
+          NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: ${{ vars.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET }}
+          NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: ${{ vars.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID }}
+          NEXT_PUBLIC_FIREBASE_APP_ID: ${{ vars.NEXT_PUBLIC_FIREBASE_APP_ID }}
+          NEXT_PUBLIC_USE_FIREBASE_EMULATOR: "false"
+        run: npm run build
+
+      - name: Confirm the export looks sane
+        # Cheap insurance against shipping an empty directory if the export mode
+        # ever changes: `firebase deploy` would happily upload nothing at all.
+        run: |
+          test -f out/index.html || { echo "::error::out/index.html missing"; exit 1; }
+          test -f out/login.html || { echo "::error::out/login.html missing"; exit 1; }
+          test -f out/sw.js      || { echo "::error::out/sw.js missing"; exit 1; }
+          echo "✓ $(find out -type f | wc -l | tr -d ' ') files ready to upload"
+
+      - name: Authenticate to Firebase
+        # Written to a file rather than passed inline so the JSON never appears in
+        # a command line. GOOGLE_APPLICATION_CREDENTIALS is what firebase-tools
+        # reads for non-interactive auth.
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$RUNNER_TEMP/gcp-key.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/gcp-key.json" >> "$GITHUB_ENV"
+
+      - name: Install Firebase CLI
+        run: npm install -g firebase-tools@13
+
+      - name: Deploy
+        env:
+          PROJECT_ID: ${{ vars.FIREBASE_PROJECT_ID }}
+          HOSTING_ONLY: ${{ inputs.hosting_only }}
+        run: |
+          if [ "$HOSTING_ONLY" = "true" ]; then
+            targets="hosting"
+          else
+            targets="hosting,firestore:rules,firestore:indexes"
+          fi
+
+          echo "→ deploying [$targets] to $PROJECT_ID"
+          firebase deploy \
+            --only "$targets" \
+            --project "$PROJECT_ID" \
+            --non-interactive \
+            --message "${GITHUB_SHA::7} via GitHub Actions"
+
+      - name: Remove credentials
+        if: always()
+        run: rm -f "$RUNNER_TEMP/gcp-key.json"
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### Deploy — ${{ job.status }}"
+            echo ""
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Commit | \`${GITHUB_SHA::7}\` |"
+            echo "| Project | \`${{ vars.FIREBASE_PROJECT_ID }}\` |"
+            echo "| URL | https://${{ vars.FIREBASE_PROJECT_ID }}.web.app |"
+          } >> "$GITHUB_STEP_SUMMARY"

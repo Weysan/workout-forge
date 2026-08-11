@@ -1,0 +1,61 @@
+{
+  "name": "forge",
+  "version": "0.1.0",
+  "private": true,
+  "description": "FORGE — hybrid training log for CrossFit, Hyrox and strength athletes",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "next dev --port 3000",
+    "build": "next build",
+    "postbuild": "node scripts/generate-precache.mjs out",
+    "preview": "firebase emulators:start --only hosting",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "icons": "node scripts/generate-icons.mjs public/icons",
+    "test:rules": "firebase emulators:exec --project forge-rules-test --only firestore 'node --test tests/firestore.rules.test.mjs'",
+    "test:sw": "node --test tests/service-worker.test.mjs",
+    "test:offline": "node --test tests/offline.test.mjs",
+    "emulators": "firebase emulators:start --import=./.emulator-data/data --export-on-exit=./.emulator-data/data",
+    "emulators:clean": "firebase emulators:start"
+  },
+  "dependencies": {
+    "@radix-ui/react-dialog": "^1.1.4",
+    "@radix-ui/react-label": "^2.1.1",
+    "@radix-ui/react-popover": "^1.1.4",
+    "@radix-ui/react-radio-group": "^1.2.2",
+    "@radix-ui/react-select": "^2.1.4",
+    "@radix-ui/react-separator": "^1.1.1",
+    "@radix-ui/react-slot": "^1.1.1",
+    "@radix-ui/react-switch": "^1.1.2",
+    "@radix-ui/react-tabs": "^1.1.2",
+    "@radix-ui/react-toggle-group": "^1.1.1",
+    "@tanstack/react-query": "^5.62.11",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "cmdk": "^1.0.4",
+    "date-fns": "^4.1.0",
+    "firebase": "^12.17.1",
+    "lucide-react": "^0.469.0",
+    "next": "^15.1.3",
+    "react": "^19.0.0",
+    "react-day-picker": "^9.4.4",
+    "react-dom": "^19.0.0",
+    "sonner": "^1.7.1",
+    "tailwind-merge": "^2.6.0"
+  },
+  "devDependencies": {
+    "@eslint/eslintrc": "^3.2.0",
+    "@firebase/rules-unit-testing": "^5.0.1",
+    "@tailwindcss/postcss": "^4.0.0",
+    "@types/node": "^22.10.5",
+    "@types/react": "^19.0.2",
+    "@types/react-dom": "^19.0.2",
+    "eslint": "^9.17.0",
+    "eslint-config-next": "^15.1.3",
+    "tailwindcss": "^4.0.0",
+    "tw-animate-css": "^1.2.5",
+    "typescript": "^5.7.2"
+  }
+}

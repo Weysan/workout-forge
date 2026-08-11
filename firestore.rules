@@ -1,0 +1,85 @@
+rules_version = '2';
+
+// FORGE security model
+// -------------------------------------------------------------------------
+// Every document lives under users/{uid}. A signed-in user may read and write
+// only their own subtree, and nothing else. There is no shared or public data,
+// so the default posture is deny-all with a single owner-scoped exception.
+//
+// The web client holds the Firebase config in plain text (it is public by
+// design), so these rules — not the config — are the actual access boundary.
+// Keep validation here in sync with src/lib/schemas.ts.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isOwner(uid) {
+      return request.auth != null && request.auth.uid == uid;
+    }
+
+    function isNonEmptyString(value, maxLen) {
+      return value is string && value.size() > 0 && value.size() <= maxLen;
+    }
+
+    // --- User profile ----------------------------------------------------
+    match /users/{uid} {
+      allow read: if isOwner(uid);
+
+      allow create: if isOwner(uid)
+        && request.resource.data.uid == uid
+        && isNonEmptyString(request.resource.data.displayName, 60)
+        && request.resource.data.gender in ['male', 'female', 'non_binary']
+        && request.resource.data.unitSystem in ['metric', 'imperial'];
+
+      allow update: if isOwner(uid)
+        // uid is immutable once written.
+        && request.resource.data.uid == resource.data.uid
+        && isNonEmptyString(request.resource.data.displayName, 60)
+        && request.resource.data.gender in ['male', 'female', 'non_binary']
+        && request.resource.data.unitSystem in ['metric', 'imperial'];
+
+      allow delete: if isOwner(uid);
+
+      // --- Workout log ---------------------------------------------------
+      match /workouts/{workoutId} {
+        allow read, delete: if isOwner(uid);
+
+        allow create, update: if isOwner(uid)
+          && isNonEmptyString(request.resource.data.title, 120)
+          // Stored as YYYY-MM-DD so lexical ordering equals chronological.
+          && request.resource.data.date is string
+          && request.resource.data.date.matches('^\\d{4}-\\d{2}-\\d{2}$')
+          && request.resource.data.type in [
+               'AMRAP', 'EMOM', 'ForTime', 'Strength', 'Hyrox', 'Custom'
+             ]
+          && request.resource.data.scoreType in [
+               'time_seconds', 'reps', 'weight', 'rounds_reps', 'pass_fail'
+             ]
+          && request.resource.data.rxOrScaled in ['RX', 'Scaled']
+          && request.resource.data.scoreValue is number
+          && request.resource.data.scoreValue >= 0
+          && request.resource.data.isPR is bool
+          && request.resource.data.description.size() <= 5000
+          && request.resource.data.notes.size() <= 5000;
+      }
+
+      // --- Personal records ----------------------------------------------
+      // Document id is the movementId, which gives us a natural upsert key.
+      match /prs/{movementId} {
+        allow read, delete: if isOwner(uid);
+
+        allow create, update: if isOwner(uid)
+          && request.resource.data.movementId == movementId
+          && isNonEmptyString(request.resource.data.name, 120)
+          && request.resource.data.category in ['Lift', 'Benchmark', 'Hero', 'Run']
+          && request.resource.data.bestValue is number
+          && request.resource.data.bestValue >= 0;
+      }
+    }
+
+    // Anything not matched above is denied.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

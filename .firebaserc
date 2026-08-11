@@ -1,0 +1,6 @@
+{
+  "projects": {
+    "default": "forge-app-dev",
+    "production": "forge-app-prod"
+  }
+}

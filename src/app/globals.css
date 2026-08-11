@@ -1,0 +1,197 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+/* ==========================================================================
+   FORGE — design tokens
+   ==========================================================================
+   The app is dark-native: there is no light theme to switch to, so the palette
+   lives on :root rather than behind a .dark selector. `color-scheme: dark` makes
+   native controls (scrollbars, date pickers, form autofill) match.
+
+   Palette: deep slate ground, emerald primary, cyan for records and accents.
+   ========================================================================== */
+
+:root {
+  color-scheme: dark;
+
+  /* Ground */
+  --background: #0b1120;
+  --foreground: #f1f5f9;
+
+  /* Raised surfaces */
+  --card: #111c31;
+  --card-foreground: #f1f5f9;
+  --elevated: #16233c;
+
+  --popover: #111c31;
+  --popover-foreground: #f1f5f9;
+
+  /* Brand */
+  --primary: #10b981;
+  --primary-foreground: #03150e;
+  --accent: #06b6d4;
+  --accent-foreground: #03151a;
+
+  /* Supporting */
+  --secondary: #1b2942;
+  --secondary-foreground: #e2e8f0;
+  --muted: #16233c;
+  --muted-foreground: #94a3b8;
+
+  --destructive: #f43f5e;
+  --destructive-foreground: #1a0509;
+
+  --warning: #f59e0b;
+
+  --border: #1e2d48;
+  --input: #1b2942;
+  --ring: #10b981;
+
+  --radius: 0.875rem;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-elevated: var(--elevated);
+
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-warning: var(--warning);
+
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-inter-tight), var(--font-inter), sans-serif;
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 10px);
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html {
+    /* Prevents the iOS "rubber band" from revealing a white page behind the app
+       when it is installed to the home screen. */
+    background-color: var(--background);
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    /* Stops horizontal jitter when the date strip scrolls. */
+    overscroll-behavior-y: contain;
+  }
+
+  /* Headings and numbers are the app's voice: tight, condensed, confident. */
+  h1,
+  h2,
+  h3,
+  h4 {
+    @apply font-display tracking-tight;
+  }
+
+  /* Scores must never shift width as digits change. */
+  .tabular {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum";
+  }
+
+  /* Numeric inputs: hide the spinner, it is useless on a 2-digit seconds field. */
+  input[type="number"]::-webkit-outer-spin-button,
+  input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  input[type="number"] {
+    -moz-appearance: textfield;
+  }
+
+  ::selection {
+    background-color: color-mix(in oklab, var(--primary) 30%, transparent);
+  }
+}
+
+@layer utilities {
+  /* --- Safe areas -------------------------------------------------------
+     Installed PWAs draw under the iOS home indicator, so the sticky bottom
+     nav and the FAB have to account for it. */
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .pt-safe {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+  .bottom-safe {
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 1rem);
+  }
+  .mb-safe-nav {
+    /* Clears the fixed bottom nav (4rem) plus the home indicator. */
+    margin-bottom: calc(4rem + env(safe-area-inset-bottom, 0px));
+  }
+
+  /* --- Brand effects ---------------------------------------------------- */
+  .glow-primary {
+    box-shadow:
+      0 0 0 1px color-mix(in oklab, var(--primary) 40%, transparent),
+      0 8px 32px -8px color-mix(in oklab, var(--primary) 45%, transparent);
+  }
+
+  .glow-accent {
+    box-shadow:
+      0 0 0 1px color-mix(in oklab, var(--accent) 40%, transparent),
+      0 8px 32px -8px color-mix(in oklab, var(--accent) 45%, transparent);
+  }
+
+  .text-gradient-pr {
+    background-image: linear-gradient(
+      100deg,
+      var(--primary) 0%,
+      var(--accent) 100%
+    );
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  /* Hairline grid, used behind hero areas to suggest a gym floor. */
+  .bg-grid {
+    background-image:
+      linear-gradient(to right, var(--border) 1px, transparent 1px),
+      linear-gradient(to bottom, var(--border) 1px, transparent 1px);
+    background-size: 28px 28px;
+    mask-image: radial-gradient(ellipse 70% 60% at 50% 0%, #000 40%, transparent 100%);
+  }
+
+  .no-scrollbar {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+}

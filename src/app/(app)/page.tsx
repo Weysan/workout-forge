@@ -1,0 +1,178 @@
+"use client";
+
+import { Suspense, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
+import {
+  endOfWeek,
+  format,
+  isToday,
+  isYesterday,
+  startOfWeek,
+} from "date-fns";
+import { PlusIcon, TrophyIcon } from "lucide-react";
+import { toast } from "sonner";
+
+import { fromDateKey, toDateKey } from "@/lib/utils";
+import {
+  useDeleteWorkout,
+  useWorkoutDatesInRange,
+  useWorkoutsByDate,
+} from "@/lib/hooks/use-workouts";
+import { useProfile } from "@/lib/hooks/use-profile";
+import type { Workout } from "@/lib/types";
+import { DateStrip } from "@/components/date-strip";
+import { EmptyDay, WorkoutCard } from "@/components/workout-card";
+import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
+
+const DATE_KEY = /^\d{4}-\d{2}-\d{2}$/;
+
+function readDateParam(value: string | null): Date | null {
+  return value && DATE_KEY.test(value) ? fromDateKey(value) : null;
+}
+
+function Log() {
+  // `?date=` makes a day linkable, which is what lets "View" on the toast from a
+  // backdated result in Performance land on the day it was filed under.
+  const searchParams = useSearchParams();
+  const dateParam = searchParams.get("date");
+
+  const [selected, setSelected] = useState(
+    () => readDateParam(dateParam) ?? new Date(),
+  );
+
+  // Covers arriving here while the page is already mounted.
+  useEffect(() => {
+    const fromUrl = readDateParam(dateParam);
+    if (fromUrl) setSelected(fromUrl);
+  }, [dateParam]);
+
+  const dateKey = toDateKey(selected);
+
+  const { data: profile } = useProfile();
+  const { data: workouts, isPending } = useWorkoutsByDate(dateKey);
+  const deleteWorkout = useDeleteWorkout(dateKey);
+
+  const thisWeek = useMemo(() => {
+    const now = new Date();
+    return {
+      start: toDateKey(startOfWeek(now, { weekStartsOn: 1 })),
+      end: toDateKey(endOfWeek(now, { weekStartsOn: 1 })),
+    };
+  }, []);
+  const { data: weekDates } = useWorkoutDatesInRange(
+    thisWeek.start,
+    thisWeek.end,
+  );
+
+  const prCount = (workouts ?? []).filter((w) => w.isPR).length;
+
+  // "today" / "yesterday" read better than a date on the two days that matter most.
+  const relativeLabel = isToday(selected)
+    ? "today"
+    : isYesterday(selected)
+      ? "yesterday"
+      : `on ${format(selected, "d MMM")}`;
+
+  async function handleDelete(workout: Workout) {
+    try {
+      const result = await deleteWorkout.mutateAsync(workout);
+      toast.success(
+        result.queued ? "Deleted on this device" : "Workout deleted",
+        {
+          description: result.queued
+            ? "The deletion syncs when you're back online."
+            : undefined,
+        },
+      );
+    } catch {
+      toast.error("Could not delete the workout", {
+        description: "It has been restored. Try again in a moment.",
+      });
+    }
+  }
+
+  const firstName = profile?.displayName?.split(" ")[0];
+
+  return (
+    <div className="space-y-5">
+      <section className="pt-5">
+        <h1 className="font-display text-2xl leading-tight font-extrabold">
+          {firstName ? `Let's go, ${firstName}.` : "Training log"}
+        </h1>
+        <p className="text-muted-foreground mt-1 text-sm">
+          <span className="text-foreground font-semibold tabular">
+            {weekDates?.length ?? 0}
+          </span>{" "}
+          {weekDates?.length === 1 ? "day" : "days"} trained this week
+        </p>
+      </section>
+
+      <DateStrip selected={selected} onSelect={setSelected} />
+
+      <section className="space-y-3">
+        <div className="flex items-center justify-between gap-2 pt-1">
+          <h2 className="font-display text-sm font-bold tracking-widest uppercase">
+            {format(selected, "EEEE d MMMM")}
+          </h2>
+          {prCount > 0 && (
+            <span className="text-primary inline-flex items-center gap-1 text-[11px] font-bold tracking-widest uppercase">
+              <TrophyIcon className="size-3.5" />
+              {prCount} PR{prCount > 1 ? "s" : ""}
+            </span>
+          )}
+        </div>
+
+        {isPending ? (
+          <div className="space-y-3">
+            <Skeleton className="h-44 w-full rounded-xl" />
+            <Skeleton className="h-44 w-full rounded-xl" />
+          </div>
+        ) : workouts && workouts.length > 0 ? (
+          <div className="space-y-3">
+            {workouts.map((workout) => (
+              <WorkoutCard
+                key={workout.id}
+                workout={workout}
+                onDelete={handleDelete}
+              />
+            ))}
+          </div>
+        ) : (
+          <EmptyDay dateLabel={relativeLabel} />
+        )}
+      </section>
+
+      {/* Sits above the bottom nav, inside the thumb arc, on every scroll position. */}
+      <Button
+        asChild
+        size="lg"
+        className="fixed right-4 z-40 h-14 rounded-2xl px-5 shadow-2xl shadow-primary/30 bottom-safe mb-16"
+        aria-label="Log a workout"
+      >
+        <Link href={`/workout/new?date=${dateKey}`}>
+          <PlusIcon className="size-5" />
+          Log
+        </Link>
+      </Button>
+    </div>
+  );
+}
+
+export default function LogPage() {
+  // useSearchParams needs a Suspense boundary to prerender under `output: export`.
+  return (
+    <Suspense
+      fallback={
+        <div className="space-y-4 pt-6">
+          <Skeleton className="h-14 w-2/3" />
+          <Skeleton className="h-24 w-full" />
+          <Skeleton className="h-44 w-full" />
+        </div>
+      }
+    >
+      <Log />
+    </Suspense>
+  );
+}
