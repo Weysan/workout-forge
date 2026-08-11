@@ -17,6 +17,7 @@
     "test:rules": "firebase emulators:exec --project forge-rules-test --only firestore 'node --test tests/firestore.rules.test.mjs'",
     "test:sw": "node --test tests/service-worker.test.mjs",
     "test:offline": "node --test tests/offline.test.mjs",
+    "test:percentages": "node --test tests/percentages.test.mjs",
     "emulators": "firebase emulators:start --import=./.emulator-data/data --export-on-exit=./.emulator-data/data",
     "emulators:clean": "firebase emulators:start"
   },

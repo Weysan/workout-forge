@@ -113,6 +113,7 @@ src/
     firebase.ts       lazy client singletons + emulator wiring
     scoring.ts        score normalisation, PR comparison, formatting
     units.ts          kg ↔ lbs
+    percentages.ts    percentage-of-max table off a logged best
     score-draft.ts    form-state model for the dynamic score inputs
     firestore/        data access, one module per collection
     hooks/            React Query hooks
@@ -182,11 +183,22 @@ drifted (`docker/web-entrypoint.sh`).
 
 ### Changing dependencies
 
+`make install` (and so `make setup`) runs **`npm ci`**, which installs exactly the
+lockfile and never rewrites it. Only an explicit `npm install <pkg>` /
+`npm uninstall <pkg>` should ever change `package-lock.json`.
+
 After adding or removing a package, run `make dev` (or `docker compose build web`)
 before pushing. The container installs with `npm ci`, which is stricter than the
 `npm install` you just ran on the host, and CI installs the same way.
 
-If it fails with `Missing <pkg> from lock file`, regenerate the lockfile:
+If it fails with `Missing <pkg> from lock file`, the lockfile lost its Linux-only
+entries. Recover it with git if the change is not yours to keep:
+
+```bash
+git checkout -- package-lock.json
+```
+
+Otherwise regenerate the full tree — an incremental install cannot repair it:
 
 ```bash
 rm -rf node_modules package-lock.json && npm install
@@ -202,21 +214,23 @@ platform.
 
 ### Tests
 
-`make test` runs both suites. Plain ESM on Node's built-in test runner, so there
+`make test` runs every suite. Plain ESM on Node's built-in test runner, so there
 is no test framework to configure.
 
 | Suite | Command | Covers |
 |---|---|---|
 | `tests/offline.test.mjs` | `make test-offline` | 11 assertions on write acceptance, queueing and cache fallback |
+| `tests/percentages.test.mjs` | `make test-percentages` | 9 tests on the percentage-of-max arithmetic and step ordering |
 | `tests/firestore.rules.test.mjs` | `make test-rules` | 28 assertions on the owner boundary and document validation |
 | `tests/service-worker.test.mjs` | `make test-sw` | 15 assertions that the built worker can serve every route offline |
 
 The rules suite runs against an isolated emulator project, so it is safe to run
 while `make dev` is up — your local workouts are not touched. The service-worker
 suite runs against the *built* `out/sw.js`, because the thing worth testing is the
-artefact including its generated precache manifest. The offline suite imports
-`src/lib/offline.ts` directly via Node's built-in type stripping — that module has
-no imports of its own, which is what makes it testable without a bundler.
+artefact including its generated precache manifest. The offline and percentage
+suites import `src/lib/offline.ts` and `src/lib/percentages.ts` directly via Node's
+built-in type stripping — neither module has imports of its own, which is what
+makes them testable without a bundler.
 
 ---
 

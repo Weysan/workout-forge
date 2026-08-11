@@ -1,15 +1,18 @@
 "use client";
 
+import { useState } from "react";
 import { format } from "date-fns";
-import { TrophyIcon } from "lucide-react";
+import { PercentIcon, TrophyIcon } from "lucide-react";
 
 import { cn, fromDateKey } from "@/lib/utils";
 import { formatScore, isScored, scoreTypeLabel } from "@/lib/scoring";
 import { useUnitSystem } from "@/lib/hooks/use-profile";
 import { useBenchmarkHistory } from "@/lib/hooks/use-workouts";
 import type { Benchmark, PersonalRecord } from "@/lib/types";
+import { PercentageTableDialog } from "@/components/percentage-table-dialog";
 import { QuickLogForm } from "@/components/quick-log-form";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Sheet,
   SheetContent,
@@ -40,11 +43,32 @@ export function PrDetailSheet({
   const { data: history, isPending } = useBenchmarkHistory(
     open ? (benchmark?.id ?? null) : null,
   );
+  const [percentagesOpen, setPercentagesOpen] = useState(false);
 
   if (!benchmark) return null;
 
+  // Only loads divide into percentages — a benchmark time or an AMRAP score does
+  // not, so the button stays off those movements entirely.
+  const percentagesAvailable =
+    record !== undefined && record.scoreType === "weight";
+
+  // The record document stores the load but not the reps behind it, so the reps
+  // come from the attempt the recompute badged as the record holder. `undefined`
+  // while the history loads, which the table treats as "not known" rather than
+  // as a single.
+  const bestReps = history?.find((attempt) => attempt.isPR)?.reps;
+
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
+    <Sheet
+      open={open}
+      // Dismissing the panel has to drop the percentage table with it: this
+      // component stays mounted between movements, so a lingering `true` would
+      // greet the next movement opened with a table already over it.
+      onOpenChange={(next) => {
+        if (!next) setPercentagesOpen(false);
+        onOpenChange(next);
+      }}
+    >
       <SheetContent side="bottom" className="gap-0">
         <SheetHeader>
           <div className="flex items-center gap-2">
@@ -91,6 +115,21 @@ export function PrDetailSheet({
               </div>
             )}
           </div>
+
+          {/* --- Percentage table ---------------------------------------------
+              Full-width rather than tucked into the card above: it is reached
+              mid-session, on a phone, to answer "what is 75% of this?". */}
+          {percentagesAvailable && (
+            <Button
+              type="button"
+              variant="outline"
+              className="mt-2.5 w-full"
+              onClick={() => setPercentagesOpen(true)}
+            >
+              <PercentIcon />
+              Percentage table
+            </Button>
+          )}
 
           {/* --- Log a result -------------------------------------------------
               Placed above the history: it is the reason most visits to this
@@ -179,6 +218,16 @@ export function PrDetailSheet({
             </p>
           )}
         </div>
+
+        {percentagesAvailable && (
+          <PercentageTableDialog
+            movementName={benchmark.name}
+            maxKg={record.bestValue}
+            basisReps={bestReps}
+            open={percentagesOpen}
+            onOpenChange={setPercentagesOpen}
+          />
+        )}
       </SheetContent>
     </Sheet>
   );

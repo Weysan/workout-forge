@@ -31,6 +31,10 @@ COPY package.json package-lock.json ./
 # `npm install <pkg>` / `npm uninstall <pkg>` on macOS can drop the hoisted
 # entries that only Linux needs (e.g. @emnapi/*, required by @img/sharp-wasm32),
 # producing a lockfile that resolves on the host but not in this image.
+#
+# Recovery leads with git on purpose: the damage is almost always an unintended
+# rewrite, so restoring the committed lockfile is both correct and instant, and a
+# full reinstall is only needed when the change was one you meant to keep.
 RUN --mount=type=cache,target=/root/.npm \
     npm ci --no-audit --no-fund || { \
       echo ""; \
@@ -41,9 +45,13 @@ RUN --mount=type=cache,target=/root/.npm \
       echo " lockfile was last written by an incremental npm command on a"; \
       echo " different platform and lost Linux-only optional entries."; \
       echo ""; \
-      echo " Fix, on the host:"; \
+      echo " Fix, on the host — if you did not mean to change deps:"; \
+      echo "   git checkout -- package-lock.json"; \
+      echo ""; \
+      echo " Or, to keep a deliberate dependency change:"; \
       echo "   rm -rf node_modules package-lock.json && npm install"; \
-      echo "   make dev"; \
+      echo ""; \
+      echo " Then: make dev"; \
       echo "───────────────────────────────────────────────────────────────"; \
       exit 1; \
     }

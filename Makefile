@@ -41,9 +41,17 @@ $(ENV_FILE):
 	@echo "  Local development works as-is against the emulator."
 	@echo "  Fill in real Firebase values only to point at a live project."
 
+# `npm ci`, not `npm install`. This target only mirrors the lockfile onto the host
+# for the editor, so it has no business rewriting it — and on macOS a bare
+# `npm install` prunes the hoisted entries only Linux resolution needs (@emnapi/*,
+# for @img/sharp-wasm32), which then breaks `npm ci` in the container. `make setup`
+# used to corrupt its own build that way.
+#
+# Adding or removing a package stays an explicit `npm install <pkg>` — see
+# "Changing dependencies" in the README.
 .PHONY: install
 install: ## Install npm dependencies on the host (for editor/IDE support)
-	npm install --no-audit --no-fund
+	npm ci --no-audit --no-fund
 
 # ---------------------------------------------------------------------------
 # Local development
@@ -94,11 +102,15 @@ shell: ## Open a shell inside the running web container
 check: typecheck lint build test ## Run every CI gate locally
 
 .PHONY: test
-test: test-offline test-rules test-sw ## Run all tests
+test: test-offline test-percentages test-rules test-sw ## Run all tests
 
 .PHONY: test-offline
 test-offline: ## Offline write-acceptance and cache-fallback tests
 	npm run test:offline
+
+.PHONY: test-percentages
+test-percentages: ## Percentage-of-max table arithmetic
+	npm run test:percentages
 
 .PHONY: test-rules
 test-rules: ## Firestore security-rules tests (starts the emulator if needed)
