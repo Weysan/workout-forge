@@ -401,19 +401,17 @@ To do it by hand instead: Repository → **Settings** → **Secrets and variable
 `NEXT_PUBLIC_FIREBASE_PROJECT_ID` is **not** a separate entry — the workflow
 derives it from `FIREBASE_PROJECT_ID` so there is only one place to change it.
 
-### Step 5 — Enable sign-in
+### Step 5 — Check the sign-in domain
 
-Firebase console → **Authentication** → **Sign-in method**:
+Firebase console → **Authentication** → **Settings** → **Authorized domains**:
+confirm `<PROJECT_ID>.web.app` is listed, plus any custom domain you add later.
+Sign-in popups are rejected from unlisted domains, and the failure looks like a
+broken button rather than a configuration problem.
 
-- Enable **Google**. Works immediately.
-- Enable **Apple** if you want it. This additionally needs an Apple Developer
-  account and a Services ID. Until it is configured the Apple button returns
-  `auth/operation-not-allowed`, which the login screen reports plainly rather
-  than failing silently.
-
-Then **Authentication** → **Settings** → **Authorized domains**: confirm
-`<PROJECT_ID>.web.app` is listed, plus any custom domain. Sign-in popups are
-rejected from unlisted domains.
+Apple sign-in additionally needs an Apple Developer account and a Services ID.
+Until that exists the Apple button returns `auth/operation-not-allowed`, which the
+login screen reports plainly rather than failing silently — so it is safe to ship
+with Google only and add Apple later.
 
 ### Step 6 — Deploy once by hand, then let CI take over
 

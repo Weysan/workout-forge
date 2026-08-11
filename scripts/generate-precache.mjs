@@ -24,9 +24,6 @@ function shouldSkip(urlPath) {
   return (
     // The worker cannot meaningfully cache itself.
     urlPath === "/sw.js" ||
-    // Next's RSC payloads; the client fetches these on demand and they are not
-    // needed to boot a statically exported page.
-    urlPath.endsWith(".txt") ||
     // Source maps are large and only used by devtools.
     urlPath.endsWith(".map")
   );
@@ -69,6 +66,10 @@ for (const file of files) {
     continue;
   }
 
+  // Everything else, including each route's `.txt` RSC payload. Those are what
+  // an in-app link actually fetches — the App Router swaps the tree from the
+  // flight data rather than navigating — so without them the app opens offline
+  // but the bottom nav goes nowhere.
   assets.push(urlPath);
 }
 

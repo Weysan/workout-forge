@@ -150,7 +150,8 @@
     bottom: calc(env(safe-area-inset-bottom, 0px) + 1rem);
   }
   .mb-safe-nav {
-    /* Clears the fixed bottom nav (4rem) plus the home indicator. */
+    /* Lifts a floating control clear of the bottom nav (4rem) and the home
+       indicator. */
     margin-bottom: calc(4rem + env(safe-area-inset-bottom, 0px));
   }
 

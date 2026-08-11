@@ -1,6 +1,5 @@
 {
   "projects": {
-    "default": "forge-app-dev",
-    "production": "forge-app-prod"
+    "default": "workout-forge-7f364"
   }
 }

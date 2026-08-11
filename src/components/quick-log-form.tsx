@@ -39,8 +39,18 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
  * on the calendar for the chosen day: the calendar reads workouts by date, and
  * `createWorkout` recomputes the personal record afterwards. There is no separate
  * "record-only" path to keep in sync.
+ *
+ * `onLogged` fires after a successful save so the container — the PR detail panel
+ * — can dismiss itself: the result the user just entered is behind that panel, so
+ * leaving it open hides the outcome of their own action.
  */
-export function QuickLogForm({ benchmark }: { benchmark: Benchmark }) {
+export function QuickLogForm({
+  benchmark,
+  onLogged,
+}: {
+  benchmark: Benchmark;
+  onLogged?: () => void;
+}) {
   const router = useRouter();
   const unitSystem = useUnitSystem();
   const createWorkout = useCreateWorkout();
@@ -107,9 +117,11 @@ export function QuickLogForm({ benchmark }: { benchmark: Benchmark }) {
       );
 
       // Reset the score but keep the date: entering a run of historical results
-      // for the same movement is the common case.
+      // for the same movement is the common case when the form stays mounted.
       setDraft(emptyDraft(unitSystem));
       setSubmitted(false);
+
+      onLogged?.();
     } catch {
       toast.error(`Could not log ${benchmark.name}`, {
         description: "Check your connection and try again.",

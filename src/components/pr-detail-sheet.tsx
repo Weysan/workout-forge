@@ -100,7 +100,12 @@ export function PrDetailSheet({
             <h3 className="font-display mb-3 text-sm font-bold tracking-widest uppercase">
               Log a result
             </h3>
-            <QuickLogForm benchmark={benchmark} />
+            {/* Dismiss on save: the new result lands on the records list and the
+                calendar, both of which this panel covers. */}
+            <QuickLogForm
+              benchmark={benchmark}
+              onLogged={() => onOpenChange(false)}
+            />
           </div>
 
           {/* --- History --- */}

@@ -11,14 +11,22 @@ import { usingEmulator } from "@/lib/firebase";
 import { useSyncStatus } from "@/lib/hooks/use-sync-status";
 import { Button } from "@/components/ui/button";
 import { ForgeLogo } from "@/components/brand";
-import { AppleIcon, GoogleIcon } from "@/components/provider-icons";
+import { GoogleIcon } from "@/components/provider-icons";
 import { BootScreen } from "@/components/auth-gate";
 
+/**
+ * Google is the only sign-in offered.
+ *
+ * Apple's popup flow does not survive an installed PWA on iOS — it opens outside
+ * the standalone window and the credential never comes back — so offering it
+ * would be a dead end for the platform this app is built for. `signIn("apple")`
+ * still exists for when that is handled properly with a redirect flow.
+ */
 export default function LoginPage() {
   const { user, initialising, signIn } = useAuth();
   const { online } = useSyncStatus();
   const router = useRouter();
-  const [pending, setPending] = useState<"google" | "apple" | null>(null);
+  const [pending, setPending] = useState(false);
 
   // Someone arriving here with a live session (bookmark, back button) should not
   // be asked to sign in again.
@@ -26,13 +34,13 @@ export default function LoginPage() {
     if (!initialising && user) router.replace("/");
   }, [initialising, user, router]);
 
-  async function handleSignIn(provider: "google" | "apple") {
-    setPending(provider);
+  async function handleSignIn() {
+    setPending(true);
     try {
-      await signIn(provider);
+      await signIn("google");
       // The redirect is driven by the effect above once auth state settles.
     } catch (error) {
-      setPending(null);
+      setPending(false);
 
       if (error instanceof FirebaseError) {
         // Dismissing the popup is a deliberate choice, not a failure worth a
@@ -109,7 +117,7 @@ export default function LoginPage() {
 
         <div className="space-y-3 pb-8">
           {/* Sign-in is the one flow that cannot work offline: it needs a round
-              trip to Google or Apple. Saying so beats a popup that fails. */}
+              trip to Google. Saying so beats a popup that fails. */}
           {!online && (
             <div className="border-warning/30 bg-warning/10 text-warning flex items-start gap-2.5 rounded-lg border px-3.5 py-2.5 text-xs leading-relaxed">
               <WifiOffIcon className="mt-0.5 size-4 shrink-0" />
@@ -124,10 +132,10 @@ export default function LoginPage() {
             size="lg"
             variant="default"
             className="w-full"
-            onClick={() => handleSignIn("google")}
-            disabled={pending !== null || !online}
+            onClick={handleSignIn}
+            disabled={pending || !online}
           >
-            {pending === "google" ? (
+            {pending ? (
               <Loader2Icon className="animate-spin" />
             ) : (
               <GoogleIcon className="size-5" />
@@ -135,25 +143,10 @@ export default function LoginPage() {
             Continue with Google
           </Button>
 
-          <Button
-            size="lg"
-            variant="outline"
-            className="w-full"
-            onClick={() => handleSignIn("apple")}
-            disabled={pending !== null || !online}
-          >
-            {pending === "apple" ? (
-              <Loader2Icon className="animate-spin" />
-            ) : (
-              <AppleIcon className="size-5" />
-            )}
-            Continue with Apple
-          </Button>
-
           {usingEmulator && (
             <p className="text-warning/80 pt-2 text-center text-xs">
               Local emulator — sign-in opens a fake account picker. No real
-              Google or Apple account is used.
+              Google account is used.
             </p>
           )}
 

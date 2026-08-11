@@ -12,6 +12,7 @@
  *
  * Strategies
  *   navigations   network-first, then this route's cached HTML, then /offline
+ *   RSC payloads  network-first, then this route's cached payload
  *   static assets cache-first (Next fingerprints them, so a URL never changes)
  *   Firestore/Auth never intercepted — the SDK owns its own offline queue, and
  *                 caching its traffic would corrupt that
@@ -86,6 +87,30 @@ function isFirebaseRequest(url) {
   );
 }
 
+/**
+ * True for the RSC payload behind an in-app link.
+ *
+ * Tapping a link does not issue a navigation: the App Router fetches the target
+ * route's flight data as `<route>.txt` — `/index.txt` for the root — and swaps
+ * the tree in place. If that fetch fails, the link does nothing useful, which is
+ * why these have to be cached alongside the HTML for the app to be navigable
+ * offline rather than merely openable.
+ */
+function isRscPayload(url) {
+  return url.pathname.endsWith(".txt");
+}
+
+/**
+ * Cache key for an RSC payload: the pathname, with the query dropped.
+ *
+ * Next appends a `?_rsc=<hash>` cache-buster that changes between builds and
+ * between prefetch and navigation. Keying on the full URL would mean the copy
+ * stored at install time is never the copy looked up at runtime.
+ */
+function rscKeyFor(url) {
+  return url.pathname;
+}
+
 /** Maps a navigation request to the cache key its HTML was stored under. */
 function shellKeyFor(url) {
   // `cleanUrls` serves /login from login.html, so the precache holds "/login".
@@ -135,6 +160,31 @@ self.addEventListener("fetch", (event) => {
               headers: { "Content-Type": "text/plain" },
             })
           );
+        }
+      })(),
+    );
+    return;
+  }
+
+  // --- In-app navigation payloads ---------------------------------------
+  if (isRscPayload(url)) {
+    event.respondWith(
+      (async () => {
+        const cache = await caches.open(SHELL_CACHE);
+        const key = rscKeyFor(url);
+
+        try {
+          const response = await fetch(request);
+          if (response.ok) cache.put(key, response.clone());
+          return response;
+        } catch {
+          const cached = await cache.match(key);
+          if (cached) return cached;
+
+          // Nothing cached for this route. Failing is the right answer: the
+          // router falls back to a full navigation, which the handler above can
+          // still serve from the precached HTML.
+          return new Response("", { status: 504, statusText: "Offline" });
         }
       })(),
     );

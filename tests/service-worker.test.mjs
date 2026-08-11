@@ -20,6 +20,8 @@ import { readFileSync } from "node:fs";
 const SW_PATH = process.env.SW_PATH ?? "out/sw.js";
 
 let shellKeyFor;
+let rscKeyFor;
+let isRscPayload;
 let isFirebaseRequest;
 let manifest;
 let cachedKeys;
@@ -52,6 +54,8 @@ before(() => {
   };
 
   shellKeyFor = lift("shellKeyFor");
+  rscKeyFor = lift("rscKeyFor");
+  isRscPayload = lift("isRscPayload");
   isFirebaseRequest = lift("isFirebaseRequest");
 });
 
@@ -81,10 +85,55 @@ describe("precache manifest", () => {
     assert.ok(scripts.length > 5, `only ${scripts.length} scripts precached`);
   });
 
-  it("does not try to cache the worker or RSC payloads", () => {
+  it("includes the RSC payload behind every in-app link", () => {
+    // Tapping a nav item fetches `<route>.txt`, not the HTML. Precaching the
+    // HTML alone makes the app openable offline but not navigable.
+    for (const payload of [
+      "/index.txt",
+      "/performance.txt",
+      "/profile.txt",
+      "/workout/new.txt",
+      "/workout/edit.txt",
+    ]) {
+      assert.ok(cachedKeys.has(payload), `${payload} is not precached`);
+    }
+  });
+
+  it("does not try to cache the worker or source maps", () => {
     assert.ok(!cachedKeys.has("/sw.js"));
-    assert.ok(manifest.assets.every((a) => !a.endsWith(".txt")));
     assert.ok(manifest.assets.every((a) => !a.endsWith(".map")));
+  });
+});
+
+describe("RSC payload routing", () => {
+  it("recognises flight data and nothing else", () => {
+    assert.equal(isRscPayload(new URL("https://forge.app/index.txt")), true);
+    assert.equal(
+      isRscPayload(new URL("https://forge.app/performance.txt?_rsc=1a2b3c")),
+      true,
+    );
+    assert.equal(isRscPayload(new URL("https://forge.app/performance")), false);
+    assert.equal(
+      isRscPayload(new URL("https://forge.app/_next/static/chunks/main.js")),
+      false,
+    );
+  });
+
+  it("keys on the pathname, so the ?_rsc= cache-buster cannot orphan the copy", () => {
+    // The precached key has no query; the runtime request always does. Keying
+    // on the full URL would miss every time and offline navigation would fail.
+    const key = rscKeyFor(new URL("https://forge.app/performance.txt?_rsc=9zx"));
+    assert.equal(key, "/performance.txt");
+    assert.ok(cachedKeys.has(key));
+  });
+
+  it("produces a cached key for each route the nav links to", () => {
+    for (const route of ["/", "/performance", "/profile"]) {
+      // Mirrors what the router requests: "/" becomes "/index.txt".
+      const href = route === "/" ? "/index.txt" : `${route}.txt`;
+      const key = rscKeyFor(new URL(`https://forge.app${href}?_rsc=abc`));
+      assert.ok(cachedKeys.has(key), `${route} → ${key} is not precached`);
+    }
   });
 });
 

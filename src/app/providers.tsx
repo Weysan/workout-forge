@@ -22,9 +22,27 @@ export function Providers({ children }: { children: ReactNode }) {
             staleTime: 30_000,
             refetchOnWindowFocus: false,
             retry: 1,
+
+            /**
+             * Run the query even with no connection.
+             *
+             * React Query's default ("online") pauses a fetch while
+             * `navigator.onLine` is false and reports it as still pending. For
+             * this app that is the wrong default in the one situation it is
+             * built for: every read goes through Firestore's persistent cache,
+             * which answers offline, so pausing means a gym visit with no signal
+             * shows skeletons forever — and `AuthGate` waits on the profile
+             * query, so the app never gets past its loading screen at all.
+             */
+            networkMode: "offlineFirst",
           },
           mutations: {
             retry: 0,
+            // Same reasoning: Firestore applies a write locally and queues it,
+            // and `acceptWrite` reports that as saved-and-queued. Pausing here
+            // would leave the save button spinning on a write that has already
+            // succeeded on the device.
+            networkMode: "offlineFirst",
           },
         },
       }),

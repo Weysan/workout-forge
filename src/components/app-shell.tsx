@@ -16,16 +16,23 @@ const NAV_ITEMS = [
 ] as const;
 
 /**
- * Mobile-first chrome: sticky header, scrolling content, fixed bottom nav.
+ * Mobile-first chrome: sticky header, scrolling content, sticky bottom nav.
  *
  * Navigation sits at the bottom because that is the only part of a phone screen
  * a thumb reaches comfortably.
+ *
+ * The column is at least one viewport tall with the content pane growing to fill
+ * it, so the nav is pushed to the bottom edge on a short page and sticks there
+ * while a long one scrolls. `sticky` rather than `fixed`: the nav then occupies
+ * real layout space instead of floating over the end of the content, so nothing
+ * has to be guessed about how much bottom padding clears it.
  */
 export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex min-h-svh flex-col">
       <Header />
-      <main className="mx-auto w-full max-w-2xl flex-1 px-4 pb-28">
+      {/* pb-20 clears the floating log button on the calendar, not the nav. */}
+      <main className="mx-auto w-full max-w-2xl flex-1 px-4 pb-20">
         <div className="pt-3 empty:hidden">
           <OfflineBanner />
         </div>
@@ -71,7 +78,7 @@ function BottomNav() {
   const pathname = usePathname();
 
   return (
-    <nav className="bg-background/90 fixed inset-x-0 bottom-0 z-30 border-t border-border/70 backdrop-blur-lg pb-safe">
+    <nav className="bg-background/90 sticky bottom-0 z-30 border-t border-border/70 backdrop-blur-lg pb-safe">
       <div className="mx-auto flex h-16 w-full max-w-2xl items-stretch justify-around px-2">
         {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
           // "/" would otherwise match every route with startsWith.
