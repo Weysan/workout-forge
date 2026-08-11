@@ -42,6 +42,11 @@ firebase-export-*/
 # emulator state is developer-local scratch data
 .emulator-data/
 
+# local code-search index: embeddings, metadata and a debug log that reaches
+# hundreds of MB. Rebuilt on demand, and its debug.log alone exceeds GitHub's
+# 100 MB per-file limit, so a commit that includes it cannot be pushed at all.
+.code-search-mcp/
+
 # typescript
 *.tsbuildinfo
 
