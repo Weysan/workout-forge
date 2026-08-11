@@ -23,8 +23,8 @@ export interface ScoreDraft {
   weight: string;
   weightUnit: UnitSystem;
   weightReps: string;
-  /** pass_fail */
-  completed: boolean;
+  /** pass_fail — `null` until answered, so an unscored session stays unscored. */
+  completed: boolean | null;
 }
 
 export function emptyDraft(unitSystem: UnitSystem): ScoreDraft {
@@ -37,7 +37,7 @@ export function emptyDraft(unitSystem: UnitSystem): ScoreDraft {
     weight: "",
     weightUnit: unitSystem,
     weightReps: "1",
-    completed: true,
+    completed: null,
   };
 }
 
@@ -47,6 +47,9 @@ export function draftFromWorkout(
   unitSystem: UnitSystem,
 ): ScoreDraft {
   const draft = emptyDraft(unitSystem);
+
+  // Nothing to rebuild: the session was logged without a result.
+  if (workout.scoreValue === null) return draft;
 
   switch (workout.scoreType) {
     case "time_seconds": {
@@ -84,13 +87,25 @@ function num(value: string): number {
 }
 
 export interface ResolvedScore {
-  scoreValue: number;
+  /** `null` when nothing has been entered — the workout is logged unscored. */
+  scoreValue: number | null;
   scoreDisplay: string;
   reps: number | null;
 }
 
+/** What an untouched score section resolves to: a session with no result yet. */
+const UNSCORED: ResolvedScore = {
+  scoreValue: null,
+  scoreDisplay: "",
+  reps: null,
+};
+
 /**
  * Collapses the draft into what Firestore stores.
+ *
+ * An empty draft resolves to `UNSCORED` rather than to zero, which is what lets
+ * a workout be logged now and scored later: zero is a real result for
+ * `pass_fail` and `reps`, so it cannot double as "not filled in".
  *
  * `scoreDisplay` is denormalised for convenience only — views format from
  * `scoreValue` at render time so that flipping kg↔lbs updates history too.
@@ -100,6 +115,8 @@ export function resolveScore(
   scoreType: ScoreType,
   unitSystem: UnitSystem,
 ): ResolvedScore {
+  if (!isScoreComplete(draft, scoreType)) return UNSCORED;
+
   switch (scoreType) {
     case "time_seconds": {
       const scoreValue = toTotalSeconds(0, num(draft.minutes), num(draft.seconds));
@@ -168,7 +185,8 @@ export function isScoreComplete(
     case "weight":
       return num(draft.weight) > 0;
     case "pass_fail":
-      // Both answers are valid, including "did not finish".
-      return true;
+      // Both answers are valid, including "did not finish" — but one of them has
+      // to actually be picked.
+      return draft.completed !== null;
   }
 }

@@ -6,15 +6,17 @@ import {
   FlameIcon,
   MoreVerticalIcon,
   PencilIcon,
+  PlusIcon,
   Trash2Icon,
   TrophyIcon,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import { formatScore, scoreTypeLabel } from "@/lib/scoring";
+import { formatScore, isScored, scoreTypeLabel } from "@/lib/scoring";
 import { useUnitSystem } from "@/lib/hooks/use-profile";
 import type { Workout } from "@/lib/types";
 import { WORKOUT_TYPE_OPTIONS } from "@/constants/seedData";
+import { ScoreSheet } from "@/components/score-sheet";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -47,13 +49,18 @@ export function WorkoutCard({
   const unitSystem = useUnitSystem();
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [scoreOpen, setScoreOpen] = useState(false);
 
-  const score = formatScore(
-    workout.scoreType,
-    workout.scoreValue,
-    unitSystem,
-    workout.reps,
-  );
+  // Null rather than a formatted string when the session has no result yet, so
+  // the card has to choose what to show instead of printing a confident "00:00".
+  const score = isScored(workout)
+    ? formatScore(
+        workout.scoreType,
+        workout.scoreValue,
+        unitSystem,
+        workout.reps,
+      )
+    : null;
 
   return (
     <Card
@@ -71,9 +78,16 @@ export function WorkoutCard({
         <div className="min-w-0 flex-1 space-y-2">
           <div className="flex flex-wrap items-center gap-1.5">
             <Badge variant="outline">{typeLabel(workout.type)}</Badge>
-            <Badge variant={workout.rxOrScaled === "RX" ? "primary" : "scaled"}>
-              {workout.rxOrScaled}
-            </Badge>
+            {/* RX vs Scaled is only settled once the session has been done, so an
+                unscored card shows no standard rather than the placeholder the
+                plan was saved with. The score panel asks for it. */}
+            {score !== null && (
+              <Badge
+                variant={workout.rxOrScaled === "RX" ? "primary" : "scaled"}
+              >
+                {workout.rxOrScaled}
+              </Badge>
+            )}
             {workout.isPR && (
               <Badge variant="pr">
                 <TrophyIcon />
@@ -139,9 +153,10 @@ export function WorkoutCard({
             className={cn(
               "tabular font-display text-2xl leading-none font-extrabold",
               workout.isPR && "text-gradient-pr",
+              score === null && "text-muted-foreground/40",
             )}
           >
-            {score}
+            {score ?? "—"}
           </div>
         </div>
 
@@ -151,6 +166,30 @@ export function WorkoutCard({
           </p>
         )}
       </div>
+
+      {/* The whole point of logging a session before doing it: the result goes in
+          from here, in one tap, instead of a round trip through the full form. */}
+      {score === null && (
+        <div className="border-t border-border/60 p-3">
+          <Button
+            variant="secondary"
+            className="w-full"
+            onClick={() => setScoreOpen(true)}
+          >
+            <PlusIcon />
+            Add score
+          </Button>
+        </div>
+      )}
+
+      {/* Outside the block above: saving a score removes the button that opened
+          this panel, and unmounting the panel with it would cut its closing
+          animation short. */}
+      <ScoreSheet
+        workout={workout}
+        open={scoreOpen}
+        onOpenChange={setScoreOpen}
+      />
 
       <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
         <DialogContent>

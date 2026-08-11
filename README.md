@@ -72,6 +72,14 @@ app like this never happen here:
    (`src/lib/scoring.ts`). Records, sorting and PR detection never branch on
    score type at the query layer. `rounds_reps` packs two numbers as
    `rounds * 1000 + partialReps`, which sorts correctly by rounds then reps.
+
+   The one exception is `null`, which means *logged but not scored yet* — a
+   session written down in advance. It is deliberately not `0`, because zero is a
+   real result (a `pass_fail` DNF, a 0-rep attempt) and the two must never be
+   confused. Readers narrow with `isScored()` so TypeScript forces every view to
+   decide what to render in the meantime, and the record recompute skips unscored
+   sessions, so a plan can never win a PR. `ScoreSheet` fills the result in later
+   straight from the card on the log.
 3. **`prs/` is derived data.** The workout log is the source of truth, and
    `syncRecordForBenchmark` recomputes a record from scratch after any write
    that could change it. This is what makes editing a score downwards or

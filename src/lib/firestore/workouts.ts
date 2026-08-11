@@ -31,7 +31,9 @@ function toWorkout(snapshot: QueryDocumentSnapshot<DocumentData>): Workout {
     type: data.type ?? "Custom",
     description: data.description ?? "",
     scoreType: data.scoreType ?? "pass_fail",
-    scoreValue: typeof data.scoreValue === "number" ? data.scoreValue : 0,
+    // Anything that is not a number reads as "not scored yet", which is also the
+    // right answer for a document written before the field existed.
+    scoreValue: typeof data.scoreValue === "number" ? data.scoreValue : null,
     scoreDisplay: data.scoreDisplay ?? "",
     rxOrScaled: data.rxOrScaled ?? "RX",
     isPR: Boolean(data.isPR),

@@ -3,14 +3,19 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { format } from "date-fns";
-import { CalendarIcon, Loader2Icon, TrophyIcon, XIcon } from "lucide-react";
+import {
+  CalendarIcon,
+  ClockIcon,
+  Loader2Icon,
+  TrophyIcon,
+  XIcon,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import { cn, fromDateKey, toDateKey, todayKey } from "@/lib/utils";
 import {
   emptyDraft,
   draftFromWorkout,
-  isScoreComplete,
   resolveScore,
   type ScoreDraft,
 } from "@/lib/score-draft";
@@ -50,6 +55,11 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
  * Full-screen with a sticky action bar rather than a modal: the form has five
  * sections and the on-screen keyboard eats half a phone's viewport, so a
  * centred dialog would leave almost nothing visible.
+ *
+ * The score is optional. A session written down in advance has no result yet,
+ * and refusing to save it would push the user into inventing one — so the title
+ * is the only hard requirement, and `ScoreSheet` fills the result in later
+ * straight from the log.
  */
 export function WorkoutForm({
   mode,
@@ -105,8 +115,8 @@ export function WorkoutForm({
 
   const titleError =
     submitted && title.trim().length === 0 ? "Give this workout a name" : null;
-  const scoreError =
-    submitted && !isScoreComplete(draft, scoreType) ? "Enter your score" : null;
+
+  const scored = resolved.scoreValue !== null;
 
   function patchDraft(patch: Partial<ScoreDraft>) {
     setDraft((current) => ({ ...current, ...patch }));
@@ -132,8 +142,9 @@ export function WorkoutForm({
     event.preventDefault();
     setSubmitted(true);
 
-    if (title.trim().length === 0 || !isScoreComplete(draft, scoreType)) {
-      toast.error("Some fields still need attention");
+    // The score is allowed to be missing; a nameless workout is not.
+    if (title.trim().length === 0) {
+      toast.error("Give this workout a name");
       return;
     }
 
@@ -147,8 +158,9 @@ export function WorkoutForm({
       scoreDisplay: resolved.scoreDisplay,
       rxOrScaled,
       // A manual tick is a floor, not the last word: syncRecordForBenchmark
-      // recomputes the true record holder immediately after the write.
-      isPR: markAsPR,
+      // recomputes the true record holder immediately after the write. It cannot
+      // apply to a session with no result to compare.
+      isPR: scored && markAsPR,
       linkedBenchmarkId: benchmark?.id ?? null,
       reps: resolved.reps,
       notes: notes.trim(),
@@ -172,8 +184,9 @@ export function WorkoutForm({
         });
       } else {
         toast.success(`Workout ${verb}`, {
-          description:
-            mode === "edit"
+          description: !scored
+            ? "No score yet — add it from your log once you've trained."
+            : mode === "edit"
               ? undefined
               : benchmark
                 ? `Counted towards your ${benchmark.name} record.`
@@ -312,7 +325,13 @@ export function WorkoutForm({
         {/* --- Score ------------------------------------------------------- */}
         <section className="space-y-5">
           <div className="space-y-2">
-            <Label htmlFor="scoreType">Scored by</Label>
+            <Label htmlFor="scoreType">
+              Scored by
+              {/* Says up front that this whole section can be skipped. */}
+              <span className="text-muted-foreground/60 font-normal">
+                optional
+              </span>
+            </Label>
             <Select
               value={scoreType}
               onValueChange={(value) => setScoreType(value as ScoreType)}
@@ -336,10 +355,10 @@ export function WorkoutForm({
             onChange={patchDraft}
             unitSystem={unitSystem}
           />
-          {scoreError && <p className="text-destructive text-xs">{scoreError}</p>}
-
-          {/* Live read-back: confirms the app understood the input before saving. */}
-          {isScoreComplete(draft, scoreType) && (
+          {/* Live read-back: confirms the app understood the input before saving.
+              With nothing entered, say plainly that this is a valid way to save,
+              so a blank score does not read as an unfinished form. */}
+          {scored ? (
             <div className="border-border/70 bg-card/60 flex items-baseline justify-between rounded-xl border px-4 py-3">
               <span className="text-muted-foreground text-[10px] font-bold tracking-widest uppercase">
                 {scoreTypeLabel(scoreType)}
@@ -348,6 +367,12 @@ export function WorkoutForm({
                 {resolved.scoreDisplay}
               </span>
             </div>
+          ) : (
+            <p className="text-muted-foreground/70 flex items-start gap-2 text-xs leading-relaxed">
+              <ClockIcon className="mt-0.5 size-3.5 shrink-0" />
+              Leave this empty to plan the session now — you can add the result
+              from your log afterwards.
+            </p>
           )}
         </section>
 
@@ -369,39 +394,44 @@ export function WorkoutForm({
             </ToggleGroup>
           </div>
 
-          <label
-            htmlFor="markAsPR"
-            className={cn(
-              "flex min-h-14 cursor-pointer items-center gap-3 rounded-xl border px-4 py-3 transition-colors",
-              markAsPR
-                ? "border-primary/50 bg-primary/10"
-                : "border-border bg-input/40 hover:bg-elevated",
-            )}
-          >
-            <input
-              id="markAsPR"
-              type="checkbox"
-              checked={markAsPR}
-              onChange={(event) => setMarkAsPR(event.target.checked)}
-              className="accent-primary size-5 shrink-0"
-            />
-            <span className="flex-1">
-              <span className="flex items-center gap-1.5 font-semibold">
-                <TrophyIcon
-                  className={cn(
-                    "size-4",
-                    markAsPR ? "text-primary" : "text-muted-foreground",
-                  )}
-                />
-                Mark as a PR
+          {/* Hidden until there is a score: a record with no result behind it
+              cannot be compared against anything, so offering the tick would be
+              offering a badge that means nothing. It reappears with the score. */}
+          {scored && (
+            <label
+              htmlFor="markAsPR"
+              className={cn(
+                "flex min-h-14 cursor-pointer items-center gap-3 rounded-xl border px-4 py-3 transition-colors",
+                markAsPR
+                  ? "border-primary/50 bg-primary/10"
+                  : "border-border bg-input/40 hover:bg-elevated",
+              )}
+            >
+              <input
+                id="markAsPR"
+                type="checkbox"
+                checked={markAsPR}
+                onChange={(event) => setMarkAsPR(event.target.checked)}
+                className="accent-primary size-5 shrink-0"
+              />
+              <span className="flex-1">
+                <span className="flex items-center gap-1.5 font-semibold">
+                  <TrophyIcon
+                    className={cn(
+                      "size-4",
+                      markAsPR ? "text-primary" : "text-muted-foreground",
+                    )}
+                  />
+                  Mark as a PR
+                </span>
+                <span className="text-muted-foreground mt-0.5 block text-xs leading-relaxed">
+                  {benchmark
+                    ? "Optional — records for linked benchmarks are detected automatically."
+                    : "Use this for workouts that aren't linked to a benchmark."}
+                </span>
               </span>
-              <span className="text-muted-foreground mt-0.5 block text-xs leading-relaxed">
-                {benchmark
-                  ? "Optional — records for linked benchmarks are detected automatically."
-                  : "Use this for workouts that aren't linked to a benchmark."}
-              </span>
-            </span>
-          </label>
+            </label>
+          )}
 
           <div className="space-y-2">
             <Label htmlFor="notes">Notes</Label>

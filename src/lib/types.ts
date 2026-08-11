@@ -39,7 +39,7 @@ export interface UserProfile {
  * Storage invariants — see lib/units.ts and lib/scoring.ts:
  *   · durations are total seconds
  *   · weights are kilograms
- *   · `scoreValue` is always the comparable, unit-normalised number
+ *   · `scoreValue` is always the comparable, unit-normalised number, or null
  */
 export interface Workout {
   id: string;
@@ -48,9 +48,22 @@ export interface Workout {
   title: string;
   type: WorkoutType;
   description: string;
+  /**
+   * How this workout *will be* scored. Set even while the score is still
+   * missing, so the panel that fills it in later knows which fields to show.
+   */
   scoreType: ScoreType;
-  scoreValue: number;
-  /** Pre-formatted for display, e.g. "04:15", "8 rnds + 12 reps", "120 kg". */
+  /**
+   * `null` means the session is logged but not yet scored — planned ahead, or
+   * written down before the result was known.
+   *
+   * Deliberately distinct from `0`, which is a real result: a `pass_fail` DNF
+   * and a 0-rep attempt both score zero and must not read as "unscored".
+   * Unscored sessions are skipped by the record recompute, so they can never
+   * win a PR.
+   */
+  scoreValue: number | null;
+  /** Pre-formatted for display, e.g. "04:15", "8 rnds + 12 reps", "120 kg". Empty when unscored. */
   scoreDisplay: string;
   rxOrScaled: RxOrScaled;
   isPR: boolean;

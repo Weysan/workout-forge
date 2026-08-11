@@ -47,6 +47,20 @@ export function isLowerBetter(scoreType: ScoreType): boolean {
   return scoreType === "time_seconds";
 }
 
+/**
+ * Narrows a workout to one that has an actual result.
+ *
+ * A session can be logged before it is scored, so every reader of `scoreValue`
+ * has to decide what to show in the meantime. Shaped as a type guard so
+ * TypeScript forces that decision at each call site, instead of letting a null
+ * reach `formatScore` and render as a confident "00:00".
+ */
+export function isScored<T extends { scoreValue: number | null }>(
+  workout: T,
+): workout is T & { scoreValue: number } {
+  return workout.scoreValue !== null;
+}
+
 // --- Duration ------------------------------------------------------------
 
 export function toTotalSeconds(

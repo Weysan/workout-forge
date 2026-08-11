@@ -4,7 +4,7 @@ import { format } from "date-fns";
 import { TrophyIcon } from "lucide-react";
 
 import { cn, fromDateKey } from "@/lib/utils";
-import { formatScore, scoreTypeLabel } from "@/lib/scoring";
+import { formatScore, isScored, scoreTypeLabel } from "@/lib/scoring";
 import { useUnitSystem } from "@/lib/hooks/use-profile";
 import { useBenchmarkHistory } from "@/lib/hooks/use-workouts";
 import type { Benchmark, PersonalRecord } from "@/lib/types";
@@ -152,13 +152,22 @@ export function PrDetailSheet({
                     )}
                   </div>
 
-                  <span className="tabular font-display shrink-0 text-lg font-bold">
-                    {formatScore(
-                      attempt.scoreType,
-                      attempt.scoreValue,
-                      unitSystem,
-                      attempt.reps,
+                  {/* An attempt can be on the calendar before it has a result —
+                      it shows here as pending rather than as a score of zero. */}
+                  <span
+                    className={cn(
+                      "tabular font-display shrink-0 text-lg font-bold",
+                      !isScored(attempt) && "text-muted-foreground/40",
                     )}
+                  >
+                    {isScored(attempt)
+                      ? formatScore(
+                          attempt.scoreType,
+                          attempt.scoreValue,
+                          unitSystem,
+                          attempt.reps,
+                        )
+                      : "—"}
                   </span>
                 </li>
               ))}

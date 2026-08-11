@@ -157,7 +157,10 @@ export function ScoreInput({
         <Field label="Result">
           <ToggleGroup
             type="single"
-            value={draft.completed ? "done" : "dnf"}
+            // Neither option is preselected: an unanswered result is what marks
+            // the session as still unscored, so defaulting to "Completed" would
+            // quietly score a workout the user only meant to write down.
+            value={draft.completed === null ? "" : draft.completed ? "done" : "dnf"}
             onValueChange={(value) => {
               if (value) onChange({ completed: value === "done" });
             }}

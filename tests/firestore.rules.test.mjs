@@ -178,6 +178,26 @@ describe("workouts", () => {
     );
   });
 
+  // A session can be written down before it is done, so a null score has to be
+  // accepted — while a wrong *type* of score still is not.
+  it("lets a user log a workout with no score yet", async () => {
+    await assertSucceeds(
+      setDoc(
+        doc(as(ALICE), "users", ALICE, "workouts", "unscored"),
+        validWorkout({ scoreValue: null, scoreDisplay: "", isPR: false }),
+      ),
+    );
+  });
+
+  it("lets a user fill in the score afterwards", async () => {
+    await assertSucceeds(
+      updateDoc(doc(as(ALICE), "users", ALICE, "workouts", "unscored"), {
+        scoreValue: 255,
+        scoreDisplay: "04:15",
+      }),
+    );
+  });
+
   it("refuses writing into another user's log", async () => {
     await assertFails(
       setDoc(doc(as(BOB), "users", ALICE, "workouts", "w2"), validWorkout()),

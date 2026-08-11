@@ -56,8 +56,12 @@ service cloud.firestore {
                'time_seconds', 'reps', 'weight', 'rounds_reps', 'pass_fail'
              ]
           && request.resource.data.rxOrScaled in ['RX', 'Scaled']
-          && request.resource.data.scoreValue is number
-          && request.resource.data.scoreValue >= 0
+          // A null score is a session logged before its result is known — see
+          // the Workout type. Any score that *is* present must still be a
+          // non-negative number.
+          && (request.resource.data.get('scoreValue', null) == null
+              || (request.resource.data.scoreValue is number
+                  && request.resource.data.scoreValue >= 0))
           && request.resource.data.isPR is bool
           && request.resource.data.description.size() <= 5000
           && request.resource.data.notes.size() <= 5000;

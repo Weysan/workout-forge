@@ -93,6 +93,10 @@ export async function syncRecordForBenchmark(
 
   // `pass_fail` and any score of 0 are not achievements worth recording as a
   // best, and a DNF must never become a "record time" of 00:00.
+  //
+  // The same test also excludes sessions that carry no score at all (`null`),
+  // which is what keeps a workout planned in advance out of the record table
+  // until its result is actually filled in.
   const scored = attempts.docs.filter((d) => {
     const value = d.data().scoreValue;
     return typeof value === "number" && value > 0;
