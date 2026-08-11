@@ -102,6 +102,7 @@ src/
     (app)/            signed-in routes with header + bottom nav
       page.tsx          calendar / daily log
       performance/      PR grid + attempt history
+      helpers/          barbell loader + kg/lbs converter
       profile/          settings, sign out, delete account
     login/            SSO landing
     onboarding/       first-run profile setup
@@ -114,6 +115,7 @@ src/
     scoring.ts        score normalisation, PR comparison, formatting
     units.ts          kg ↔ lbs
     percentages.ts    percentage-of-max table off a logged best
+    barbell.ts        fewest-plates loading and warm-up ladders
     score-draft.ts    form-state model for the dynamic score inputs
     firestore/        data access, one module per collection
     hooks/            React Query hooks

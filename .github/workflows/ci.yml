@@ -49,6 +49,9 @@ jobs:
       - name: Test percentage-of-max table
         run: npm run test:percentages
 
+      - name: Test barbell plate loading
+        run: npm run test:barbell
+
       - name: Build
         # Placeholders are deliberate. This build is a compile check that is never
         # deployed; the deploy workflow rebuilds with the real repository

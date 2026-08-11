@@ -102,7 +102,11 @@ shell: ## Open a shell inside the running web container
 check: typecheck lint build test ## Run every CI gate locally
 
 .PHONY: test
-test: test-offline test-percentages test-rules test-sw ## Run all tests
+test: test-barbell test-offline test-percentages test-rules test-sw ## Run all tests
+
+.PHONY: test-barbell
+test-barbell: ## Barbell plate loading and warm-up ladders
+	npm run test:barbell
 
 .PHONY: test-offline
 test-offline: ## Offline write-acceptance and cache-fallback tests

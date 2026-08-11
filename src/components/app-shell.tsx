@@ -2,7 +2,12 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { CalendarDaysIcon, TrophyIcon, UserIcon } from "lucide-react";
+import {
+  CalculatorIcon,
+  CalendarDaysIcon,
+  TrophyIcon,
+  UserIcon,
+} from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { usingEmulator } from "@/lib/firebase";
@@ -12,6 +17,7 @@ import { OfflineBanner, SyncIndicator } from "@/components/sync-indicator";
 const NAV_ITEMS = [
   { href: "/", label: "Log", icon: CalendarDaysIcon },
   { href: "/performance", label: "Records", icon: TrophyIcon },
+  { href: "/helpers", label: "Helpers", icon: CalculatorIcon },
   { href: "/profile", label: "Profile", icon: UserIcon },
 ] as const;
 

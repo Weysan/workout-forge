@@ -8,14 +8,20 @@ import { toast } from "sonner";
 
 import { cn, fromDateKey, toDateKey, todayKey } from "@/lib/utils";
 import {
+  draftFromWorkout,
   emptyDraft,
   isScoreComplete,
   resolveScore,
   type ScoreDraft,
 } from "@/lib/score-draft";
 import { useUnitSystem } from "@/lib/hooks/use-profile";
-import { useCreateWorkout } from "@/lib/hooks/use-workouts";
-import type { Benchmark, RxOrScaled, WorkoutInput } from "@/lib/types";
+import { useCreateWorkout, useUpdateWorkout } from "@/lib/hooks/use-workouts";
+import type {
+  Benchmark,
+  RxOrScaled,
+  Workout,
+  WorkoutInput,
+} from "@/lib/types";
 import { ScoreInput } from "@/components/score-input";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
@@ -40,30 +46,53 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
  * `createWorkout` recomputes the personal record afterwards. There is no separate
  * "record-only" path to keep in sync.
  *
- * `onLogged` fires after a successful save so the container — the PR detail panel
- * — can dismiss itself: the result the user just entered is behind that panel, so
- * leaving it open hides the outcome of their own action.
+ * Passing `workout` turns the same form into a correction of that attempt. The
+ * fields are identical — a mistyped score and a mistyped date are exactly what
+ * gets fixed — so this is one form used in both directions rather than a second
+ * one to keep in step.
+ *
+ * `onSaved` fires after a successful write so the container can react: the PR
+ * detail panel dismisses itself after a new result, because what was just
+ * entered is behind that panel, and closes the inline editor after a correction.
  */
 export function QuickLogForm({
   benchmark,
-  onLogged,
+  workout,
+  onSaved,
+  onCancel,
 }: {
   benchmark: Benchmark;
-  onLogged?: () => void;
+  /** The attempt being corrected. Absent when logging a new result. */
+  workout?: Workout;
+  onSaved?: () => void;
+  onCancel?: () => void;
 }) {
   const router = useRouter();
   const unitSystem = useUnitSystem();
   const createWorkout = useCreateWorkout();
+  const updateWorkout = useUpdateWorkout();
 
-  const [draft, setDraft] = useState<ScoreDraft>(() => emptyDraft(unitSystem));
-  const [dateKey, setDateKey] = useState(() => todayKey());
-  const [rxOrScaled, setRxOrScaled] = useState<RxOrScaled>("RX");
+  const editing = workout !== undefined;
+
+  // An attempt keeps the score type it was recorded with. Reading it off the
+  // benchmark instead would reinterpret the stored number if that definition
+  // has changed since — turning a time into a rep count on save.
+  const scoreType = workout?.scoreType ?? benchmark.scoreType;
+
+  const [draft, setDraft] = useState<ScoreDraft>(() =>
+    workout ? draftFromWorkout(workout, unitSystem) : emptyDraft(unitSystem),
+  );
+  const [dateKey, setDateKey] = useState(() => workout?.date ?? todayKey());
+  const [rxOrScaled, setRxOrScaled] = useState<RxOrScaled>(
+    workout?.rxOrScaled ?? "RX",
+  );
   const [datePickerOpen, setDatePickerOpen] = useState(false);
   const [submitted, setSubmitted] = useState(false);
 
-  const resolved = resolveScore(draft, benchmark.scoreType, unitSystem);
-  const complete = isScoreComplete(draft, benchmark.scoreType);
+  const resolved = resolveScore(draft, scoreType, unitSystem);
+  const complete = isScoreComplete(draft, scoreType);
   const showScoreError = submitted && !complete;
+  const pending = createWorkout.isPending || updateWorkout.isPending;
 
   // RX vs Scaled describes whether a workout was performed as prescribed. A
   // barbell lift has no prescription to scale, so the control is hidden for
@@ -74,37 +103,63 @@ export function QuickLogForm({
     setDraft((current) => ({ ...current, ...patch }));
   }
 
-  async function handleSubmit(event: React.FormEvent) {
-    event.preventDefault();
-    setSubmitted(true);
-    if (!complete) return;
-
-    const input: WorkoutInput = {
+  function buildInput(): WorkoutInput {
+    const scored = {
       date: dateKey,
-      title: benchmark.name,
-      type: benchmark.type,
-      description: benchmark.description,
-      scoreType: benchmark.scoreType,
+      scoreType,
       scoreValue: resolved.scoreValue,
       scoreDisplay: resolved.scoreDisplay,
       rxOrScaled: showStandardToggle ? rxOrScaled : "RX",
+      reps: resolved.reps,
+    } satisfies Partial<WorkoutInput>;
+
+    if (workout) {
+      // Everything this form does not ask about carries over untouched, so a
+      // correction can never quietly drop the notes or retitle the session.
+      const { id: _id, createdAt: _createdAt, ...carried } = workout;
+      // `isPR` rides along unchanged for the same reason it is left false on a
+      // new result: syncRecordForBenchmark re-badges every attempt right after
+      // the write, so whatever is sent here is overwritten by the truth.
+      return { ...carried, ...scored };
+    }
+
+    return {
+      ...scored,
+      title: benchmark.name,
+      type: benchmark.type,
+      description: benchmark.description,
       // Left false deliberately: syncRecordForBenchmark runs straight after the
       // write and badges whichever attempt actually holds the record, including
       // a backdated one that beats everything already logged.
       isPR: false,
       linkedBenchmarkId: benchmark.id,
-      reps: resolved.reps,
       notes: "",
     };
+  }
+
+  async function handleSubmit(event: React.FormEvent) {
+    event.preventDefault();
+    setSubmitted(true);
+    if (!complete) return;
+
+    const input = buildInput();
 
     try {
-      const result = await createWorkout.mutateAsync(input);
+      const result = workout
+        ? await updateWorkout.mutateAsync({
+            workoutId: workout.id,
+            input,
+            previousBenchmarkId: workout.linkedBenchmarkId,
+          })
+        : await createWorkout.mutateAsync(input);
 
       const when = format(fromDateKey(dateKey), "d MMM yyyy");
+      const verb = editing ? "updated" : "logged";
+
       toast.success(
         result.queued
           ? `${benchmark.name} saved offline`
-          : `${benchmark.name} logged`,
+          : `${benchmark.name} ${verb}`,
         {
           description: result.queued
             ? `${resolved.scoreDisplay} · ${when} — uploads when you're back online.`
@@ -118,25 +173,35 @@ export function QuickLogForm({
 
       // Reset the score but keep the date: entering a run of historical results
       // for the same movement is the common case when the form stays mounted.
-      setDraft(emptyDraft(unitSystem));
-      setSubmitted(false);
+      // A correction has nothing to reset — the editor closes behind it.
+      if (!editing) {
+        setDraft(emptyDraft(unitSystem));
+        setSubmitted(false);
+      }
 
-      onLogged?.();
+      onSaved?.();
     } catch {
-      toast.error(`Could not log ${benchmark.name}`, {
-        description: "Check your connection and try again.",
-      });
+      toast.error(
+        editing
+          ? "Could not save your changes"
+          : `Could not log ${benchmark.name}`,
+        {
+          description: "Check your connection and try again.",
+        },
+      );
     }
   }
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <ScoreInput
-        scoreType={benchmark.scoreType}
+        scoreType={scoreType}
         draft={draft}
         onChange={patchDraft}
         unitSystem={unitSystem}
-        idPrefix="quick"
+        // Two of these can be mounted at once — the panel's own form and an
+        // open inline editor — so the ids have to name the attempt as well.
+        idPrefix={workout ? `edit-${workout.id}` : "quick"}
       />
       {showScoreError && (
         <p className="text-destructive text-xs">
@@ -215,19 +280,38 @@ export function QuickLogForm({
         </div>
       )}
 
-      <Button type="submit" className="w-full" disabled={createWorkout.isPending}>
-        {createWorkout.isPending ? (
-          <Loader2Icon className="animate-spin" />
-        ) : complete ? (
-          <CheckIcon />
-        ) : (
-          <PlusIcon />
+      <div className="flex gap-2">
+        {editing && onCancel && (
+          <Button
+            type="button"
+            variant="secondary"
+            className="flex-1"
+            onClick={onCancel}
+            disabled={pending}
+          >
+            Cancel
+          </Button>
         )}
-        Save result
-      </Button>
+        <Button
+          type="submit"
+          className={editing ? "flex-[2]" : "w-full"}
+          disabled={pending}
+        >
+          {pending ? (
+            <Loader2Icon className="animate-spin" />
+          ) : complete ? (
+            <CheckIcon />
+          ) : (
+            <PlusIcon />
+          )}
+          {editing ? "Save changes" : "Save result"}
+        </Button>
+      </div>
 
       <p className="text-muted-foreground/70 text-center text-xs leading-relaxed">
-        Saved results appear on your calendar for the date you choose.
+        {editing
+          ? "Changing the date moves this result on your calendar too."
+          : "Saved results appear on your calendar for the date you choose."}
       </p>
     </form>
   );

@@ -2,13 +2,13 @@
 
 import { useState } from "react";
 import { format } from "date-fns";
-import { PercentIcon, TrophyIcon } from "lucide-react";
+import { PencilIcon, PercentIcon, TrophyIcon } from "lucide-react";
 
 import { cn, fromDateKey } from "@/lib/utils";
 import { formatScore, isScored, scoreTypeLabel } from "@/lib/scoring";
 import { useUnitSystem } from "@/lib/hooks/use-profile";
 import { useBenchmarkHistory } from "@/lib/hooks/use-workouts";
-import type { Benchmark, PersonalRecord } from "@/lib/types";
+import type { Benchmark, PersonalRecord, Workout } from "@/lib/types";
 import { PercentageTableDialog } from "@/components/percentage-table-dialog";
 import { QuickLogForm } from "@/components/quick-log-form";
 import { Badge } from "@/components/ui/badge";
@@ -44,6 +44,9 @@ export function PrDetailSheet({
     open ? (benchmark?.id ?? null) : null,
   );
   const [percentagesOpen, setPercentagesOpen] = useState(false);
+  // At most one attempt is under correction at a time: two open editors would
+  // both be writing to the same history list behind each other's back.
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   if (!benchmark) return null;
 
@@ -61,11 +64,14 @@ export function PrDetailSheet({
   return (
     <Sheet
       open={open}
-      // Dismissing the panel has to drop the percentage table with it: this
-      // component stays mounted between movements, so a lingering `true` would
-      // greet the next movement opened with a table already over it.
+      // Dismissing the panel has to drop the percentage table and any open
+      // editor with it: this component stays mounted between movements, so
+      // leftover state would greet the next movement opened.
       onOpenChange={(next) => {
-        if (!next) setPercentagesOpen(false);
+        if (!next) {
+          setPercentagesOpen(false);
+          setEditingId(null);
+        }
         onOpenChange(next);
       }}
     >
@@ -143,14 +149,21 @@ export function PrDetailSheet({
                 calendar, both of which this panel covers. */}
             <QuickLogForm
               benchmark={benchmark}
-              onLogged={() => onOpenChange(false)}
+              onSaved={() => onOpenChange(false)}
             />
           </div>
 
           {/* --- History --- */}
-          <h3 className="text-muted-foreground mt-6 mb-3 text-[11px] font-bold tracking-widest uppercase">
-            {scoreTypeLabel(benchmark.scoreType)} history
-          </h3>
+          <div className="mt-6 mb-3 flex items-baseline justify-between gap-3">
+            <h3 className="text-muted-foreground text-[11px] font-bold tracking-widest uppercase">
+              {scoreTypeLabel(benchmark.scoreType)} history
+            </h3>
+            {history && history.length > 0 && (
+              <span className="text-muted-foreground/60 text-[11px]">
+                Tap to edit
+              </span>
+            )}
+          </div>
 
           {isPending ? (
             <div className="space-y-2">
@@ -160,56 +173,34 @@ export function PrDetailSheet({
             </div>
           ) : history && history.length > 0 ? (
             <ol className="space-y-2">
-              {history.map((attempt) => (
-                <li
-                  key={attempt.id}
-                  className="border-border/70 bg-card/60 flex items-start justify-between gap-3 rounded-lg border px-4 py-3"
-                >
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <span className="tabular text-sm font-semibold">
-                        {format(fromDateKey(attempt.date), "d MMM yyyy")}
-                      </span>
-                      <Badge
-                        variant={
-                          attempt.rxOrScaled === "RX" ? "primary" : "scaled"
-                        }
-                      >
-                        {attempt.rxOrScaled}
-                      </Badge>
-                      {attempt.isPR && (
-                        <Badge variant="pr">
-                          <TrophyIcon />
-                          PR
-                        </Badge>
-                      )}
-                    </div>
-                    {attempt.notes && (
-                      <p className="text-muted-foreground mt-1 text-xs leading-relaxed">
-                        {attempt.notes}
-                      </p>
-                    )}
-                  </div>
-
-                  {/* An attempt can be on the calendar before it has a result —
-                      it shows here as pending rather than as a score of zero. */}
-                  <span
-                    className={cn(
-                      "tabular font-display shrink-0 text-lg font-bold",
-                      !isScored(attempt) && "text-muted-foreground/40",
-                    )}
+              {history.map((attempt) =>
+                attempt.id === editingId ? (
+                  <li
+                    key={attempt.id}
+                    className="border-primary/50 bg-card rounded-lg border p-4"
                   >
-                    {isScored(attempt)
-                      ? formatScore(
-                          attempt.scoreType,
-                          attempt.scoreValue,
-                          unitSystem,
-                          attempt.reps,
-                        )
-                      : "—"}
-                  </span>
-                </li>
-              ))}
+                    <h4 className="font-display mb-3 text-sm font-bold tracking-widest uppercase">
+                      Edit result
+                    </h4>
+                    {/* Stays open on save, unlike the panel's own form: the
+                        corrected row is right here, and the history behind this
+                        editor refetches to show it. */}
+                    <QuickLogForm
+                      benchmark={benchmark}
+                      workout={attempt}
+                      onSaved={() => setEditingId(null)}
+                      onCancel={() => setEditingId(null)}
+                    />
+                  </li>
+                ) : (
+                  <li key={attempt.id}>
+                    <AttemptRow
+                      attempt={attempt}
+                      onEdit={() => setEditingId(attempt.id)}
+                    />
+                  </li>
+                ),
+              )}
             </ol>
           ) : (
             <p className="text-muted-foreground border-border/70 rounded-lg border border-dashed px-4 py-8 text-center text-sm">
@@ -230,5 +221,76 @@ export function PrDetailSheet({
         )}
       </SheetContent>
     </Sheet>
+  );
+}
+
+/**
+ * One logged attempt, as a button that opens it for correction.
+ *
+ * The whole row is the target rather than a small pencil: a mistyped result is
+ * spotted by reading the row, and on a phone the thumb is already there.
+ */
+function AttemptRow({
+  attempt,
+  onEdit,
+}: {
+  attempt: Workout;
+  onEdit: () => void;
+}) {
+  const unitSystem = useUnitSystem();
+
+  return (
+    <button
+      type="button"
+      onClick={onEdit}
+      aria-label={`Edit result from ${format(fromDateKey(attempt.date), "d MMMM yyyy")}`}
+      className="border-border/70 bg-card/60 hover:border-primary/50 hover:bg-elevated group flex w-full items-start justify-between gap-3 rounded-lg border px-4 py-3 text-left transition-colors"
+    >
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          <span className="tabular text-sm font-semibold">
+            {format(fromDateKey(attempt.date), "d MMM yyyy")}
+          </span>
+          <Badge variant={attempt.rxOrScaled === "RX" ? "primary" : "scaled"}>
+            {attempt.rxOrScaled}
+          </Badge>
+          {attempt.isPR && (
+            <Badge variant="pr">
+              <TrophyIcon />
+              PR
+            </Badge>
+          )}
+        </div>
+        {attempt.notes && (
+          <p className="text-muted-foreground mt-1 text-xs leading-relaxed">
+            {attempt.notes}
+          </p>
+        )}
+      </div>
+
+      <div className="flex shrink-0 items-center gap-2">
+        {/* An attempt can be on the calendar before it has a result — it shows
+            here as pending rather than as a score of zero. */}
+        <span
+          className={cn(
+            "tabular font-display text-lg font-bold",
+            !isScored(attempt) && "text-muted-foreground/40",
+          )}
+        >
+          {isScored(attempt)
+            ? formatScore(
+                attempt.scoreType,
+                attempt.scoreValue,
+                unitSystem,
+                attempt.reps,
+              )
+            : "—"}
+        </span>
+        <PencilIcon
+          className="text-muted-foreground/40 group-hover:text-primary size-3.5 transition-colors"
+          aria-hidden
+        />
+      </div>
+    </button>
   );
 }
