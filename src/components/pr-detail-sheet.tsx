@@ -2,15 +2,22 @@
 
 import { useState } from "react";
 import { format } from "date-fns";
-import { PencilIcon, PercentIcon, TrophyIcon } from "lucide-react";
+import {
+  PencilIcon,
+  PercentIcon,
+  Share2Icon,
+  TrophyIcon,
+} from "lucide-react";
 
 import { cn, fromDateKey } from "@/lib/utils";
 import { formatScore, isScored, scoreTypeLabel } from "@/lib/scoring";
+import { buildPrCard } from "@/lib/share-card";
 import { useUnitSystem } from "@/lib/hooks/use-profile";
 import { useBenchmarkHistory } from "@/lib/hooks/use-workouts";
 import type { Benchmark, PersonalRecord, Workout } from "@/lib/types";
 import { PercentageTableDialog } from "@/components/percentage-table-dialog";
 import { QuickLogForm } from "@/components/quick-log-form";
+import { ShareSheet } from "@/components/share-sheet";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -44,6 +51,7 @@ export function PrDetailSheet({
     open ? (benchmark?.id ?? null) : null,
   );
   const [percentagesOpen, setPercentagesOpen] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
   // At most one attempt is under correction at a time: two open editors would
   // both be writing to the same history list behind each other's back.
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -61,15 +69,32 @@ export function PrDetailSheet({
   // as a single.
   const bestReps = history?.find((attempt) => attempt.isPR)?.reps;
 
+  // Built from the record rather than from the best attempt: this is the number
+  // the panel is showing above, and the image has to agree with it.
+  const shareCard = record
+    ? buildPrCard({
+        name: benchmark.name,
+        category: benchmark.category,
+        type: benchmark.type,
+        value: formatScore(record.scoreType, record.bestValue, unitSystem),
+        valueLabel: scoreTypeLabel(record.scoreType),
+        dateLabel: record.achievedOn
+          ? format(fromDateKey(record.achievedOn), "d MMM yyyy")
+          : undefined,
+        dateKey: record.achievedOn || undefined,
+      })
+    : null;
+
   return (
     <Sheet
       open={open}
-      // Dismissing the panel has to drop the percentage table and any open
-      // editor with it: this component stays mounted between movements, so
-      // leftover state would greet the next movement opened.
+      // Dismissing the panel has to drop the percentage table, the share panel
+      // and any open editor with it: this component stays mounted between
+      // movements, so leftover state would greet the next movement opened.
       onOpenChange={(next) => {
         if (!next) {
           setPercentagesOpen(false);
+          setShareOpen(false);
           setEditingId(null);
         }
         onOpenChange(next);
@@ -122,19 +147,39 @@ export function PrDetailSheet({
             )}
           </div>
 
-          {/* --- Percentage table ---------------------------------------------
-              Full-width rather than tucked into the card above: it is reached
-              mid-session, on a phone, to answer "what is 75% of this?". */}
-          {percentagesAvailable && (
-            <Button
-              type="button"
-              variant="outline"
-              className="mt-2.5 w-full"
-              onClick={() => setPercentagesOpen(true)}
+          {/* --- Actions on the record ----------------------------------------
+              Full-width rather than tucked into the card above: the percentage
+              table is reached mid-session, on a phone, to answer "what is 75% of
+              this?", and share is the other thing done with a standing best.
+              Side by side when both apply, each full-width when only one does. */}
+          {(percentagesAvailable || shareCard) && (
+            <div
+              className={cn(
+                "mt-2.5 grid gap-2",
+                percentagesAvailable && shareCard && "grid-cols-2",
+              )}
             >
-              <PercentIcon />
-              Percentage table
-            </Button>
+              {percentagesAvailable && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setPercentagesOpen(true)}
+                >
+                  <PercentIcon />
+                  Percentages
+                </Button>
+              )}
+              {shareCard && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setShareOpen(true)}
+                >
+                  <Share2Icon />
+                  Share
+                </Button>
+              )}
+            </div>
           )}
 
           {/* --- Log a result -------------------------------------------------
@@ -219,6 +264,12 @@ export function PrDetailSheet({
             onOpenChange={setPercentagesOpen}
           />
         )}
+
+        <ShareSheet
+          card={shareCard}
+          open={shareOpen}
+          onOpenChange={setShareOpen}
+        />
       </SheetContent>
     </Sheet>
   );

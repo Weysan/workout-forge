@@ -2,21 +2,25 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { format } from "date-fns";
 import {
   FlameIcon,
   MoreVerticalIcon,
   PencilIcon,
   PlusIcon,
+  Share2Icon,
   Trash2Icon,
   TrophyIcon,
 } from "lucide-react";
 
-import { cn } from "@/lib/utils";
+import { cn, fromDateKey } from "@/lib/utils";
 import { formatScore, isScored, scoreTypeLabel } from "@/lib/scoring";
+import { buildWorkoutCard } from "@/lib/share-card";
 import { useUnitSystem } from "@/lib/hooks/use-profile";
 import type { Workout } from "@/lib/types";
 import { WORKOUT_TYPE_OPTIONS } from "@/constants/seedData";
 import { ScoreSheet } from "@/components/score-sheet";
+import { ShareSheet } from "@/components/share-sheet";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -50,6 +54,7 @@ export function WorkoutCard({
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [scoreOpen, setScoreOpen] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
 
   // Null rather than a formatted string when the session has no result yet, so
   // the card has to choose what to show instead of printing a confident "00:00".
@@ -61,6 +66,23 @@ export function WorkoutCard({
         workout.reps,
       )
     : null;
+
+  // Only a finished session is worth posting: a workout planned for Thursday has
+  // no result to show, and an image of a blank score is not a share.
+  const shareCard =
+    score === null
+      ? null
+      : buildWorkoutCard({
+          title: workout.title,
+          typeLabel: typeLabel(workout.type),
+          rxOrScaled: workout.rxOrScaled,
+          isPR: workout.isPR,
+          description: workout.description,
+          value: score,
+          valueLabel: scoreTypeLabel(workout.scoreType),
+          dateLabel: format(fromDateKey(workout.date), "d MMM yyyy"),
+          dateKey: workout.date,
+        });
 
   return (
     <Card
@@ -112,6 +134,19 @@ export function WorkoutCard({
             </Button>
           </PopoverTrigger>
           <PopoverContent align="end" className="w-44 p-1">
+            {shareCard && (
+              <Button
+                variant="ghost"
+                className="w-full justify-start"
+                onClick={() => {
+                  setMenuOpen(false);
+                  setShareOpen(true);
+                }}
+              >
+                <Share2Icon />
+                Share
+              </Button>
+            )}
             <Button
               variant="ghost"
               className="w-full justify-start"
@@ -189,6 +224,14 @@ export function WorkoutCard({
         workout={workout}
         open={scoreOpen}
         onOpenChange={setScoreOpen}
+      />
+
+      {/* Same reasoning as the panel above: kept mounted so its dismissal
+          animation survives the menu closing behind it. */}
+      <ShareSheet
+        card={shareCard}
+        open={shareOpen}
+        onOpenChange={setShareOpen}
       />
 
       <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>

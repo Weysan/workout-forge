@@ -19,6 +19,7 @@
     "test:offline": "node --test tests/offline.test.mjs",
     "test:percentages": "node --test tests/percentages.test.mjs",
     "test:barbell": "node --test tests/barbell.test.mjs",
+    "test:share": "node --test tests/share-card.test.mjs",
     "emulators": "firebase emulators:start --import=./.emulator-data/data --export-on-exit=./.emulator-data/data",
     "emulators:clean": "firebase emulators:start"
   },

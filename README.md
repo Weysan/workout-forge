@@ -223,6 +223,8 @@ is no test framework to configure.
 |---|---|---|
 | `tests/offline.test.mjs` | `make test-offline` | 11 assertions on write acceptance, queueing and cache fallback |
 | `tests/percentages.test.mjs` | `make test-percentages` | 9 tests on the percentage-of-max arithmetic and step ordering |
+| `tests/barbell.test.mjs` | `make test-barbell` | plate loading and warm-up ladders, in integer hundredths |
+| `tests/share-card.test.mjs` | `make test-share` | 25 tests on what lands on a shared image: WOD clamping, badges, filenames |
 | `tests/firestore.rules.test.mjs` | `make test-rules` | 28 assertions on the owner boundary and document validation |
 | `tests/service-worker.test.mjs` | `make test-sw` | 15 assertions that the built worker can serve every route offline |
 
@@ -232,7 +234,8 @@ suite runs against the *built* `out/sw.js`, because the thing worth testing is t
 artefact including its generated precache manifest. The offline and percentage
 suites import `src/lib/offline.ts` and `src/lib/percentages.ts` directly via Node's
 built-in type stripping — neither module has imports of its own, which is what
-makes them testable without a bundler.
+makes them testable without a bundler. `share-card.ts` and `barbell.ts` are kept
+import-free for the same reason.
 
 ---
 
@@ -306,6 +309,68 @@ instead of falling through to the offline page.
 Firebase and Google hosts are explicitly never intercepted. Firestore owns its
 durable write queue; caching that traffic would break the guarantee that a workout
 logged offline is uploaded later.
+
+---
+
+## Sharing to Instagram
+
+A standing record (the panel behind a movement on **Performance**) and a scored
+session (the ⋯ menu on a workout card) can be turned into an image sized for
+Instagram — **1080×1920** for a story, **1080×1350** for the feed.
+
+### There is no "post to Stories" API
+
+The `instagram-stories://share` deep link that turns up first in any search is
+native-only: it needs an iOS or Android app bundle with a registered Facebook App
+ID. FORGE is a web app installed as a PWA, so it cannot present one, and no
+amount of URL-scheme work will change that.
+
+What does work is the **Web Share API's file support**. Handing a PNG to
+`navigator.share({ files: [...] })` opens the operating system's own share sheet,
+where Instagram appears as a target like any other app; choosing it opens the
+Story or post composer with the image already loaded. Two conditions:
+
+- **A secure context.** HTTPS, or localhost — so `npm run dev` on the machine
+  itself is fine, but testing from a phone needs `make preview` or a tunnel.
+- **A live user gesture.** This is the sharp edge. Safari rejects
+  `navigator.share` if anything was awaited since the tap, which includes
+  encoding a canvas. So `components/share-sheet.tsx` renders the image *when the
+  panel opens* and holds the finished `File` in state; the Share button then only
+  passes along something that already exists. Rendering inside the click handler
+  looks correct, passes on Android, and silently does nothing on iOS.
+
+Where files cannot be shared at all — desktop, Firefox — the sheet offers a
+download instead, and the athlete posts from their phone.
+
+### The link
+
+Instagram does not linkify text: a URL in a caption or in story text is inert. So
+the app address is **drawn onto the image** (bottom right), where it is at least
+readable and typeable, *and* sent as `url:` in the share payload, where it stays a
+real link for the other targets on that sheet — WhatsApp, Messages, mail.
+
+The address comes from `NEXT_PUBLIC_APP_URL`, falling back to the project's
+Firebase Hosting site, so a build with nothing configured still produces a working
+link rather than `undefined`.
+
+### Why the image is drawn by hand
+
+`lib/share-image.ts` is a Canvas 2D renderer rather than html2canvas or satori.
+The palette in `app/globals.css` is built on Tailwind v4 `@theme` tokens,
+`color-mix(in oklab, …)`, `background-clip: text` gradients and `mask-image` —
+the exact set of features those libraries render wrong or not at all, and a
+screenshot that does not look like the app is worse than no screenshot. Drawing
+it directly also needs no dependency and no network, so sharing works in the same
+place everything else does: a gym with no signal.
+
+The cost is that the palette exists twice — as CSS variables and as constants at
+the top of `lib/share-image.ts`. Change one, change the other.
+
+What goes *on* the card is decided separately, in `lib/share-card.ts`, which
+imports nothing and is therefore testable without a browser (`make test-share`).
+Scores and dates arrive there already formatted by `lib/scoring.ts` and date-fns,
+so there is one implementation of how a result reads and the image cannot drift
+from the screen it came from.
 
 ---
 
@@ -496,6 +561,12 @@ for Firebase web config — these are public identifiers, and access is enforced
 
 See `.env.example`. For local emulator work the defaults in `docker-compose.yml`
 are sufficient and nothing needs filling in.
+
+One value is not Firebase config: **`NEXT_PUBLIC_APP_URL`**, the public address of
+this deployment. It is drawn onto shared images and sent with the share payload —
+the link somebody types after seeing a result on Instagram. It is optional and
+falls back to the project's Firebase Hosting site; set it when you put a custom
+domain in front, with no trailing slash.
 
 ---
 
