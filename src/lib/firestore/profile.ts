@@ -12,7 +12,7 @@ import {
 import { getDb } from "@/lib/firebase";
 import { acceptWrite, isOnline, readWithCacheFallback } from "@/lib/offline";
 import type { Gender, UnitSystem, UserProfile } from "@/lib/types";
-import { prsCol, userDoc, workoutsCol } from "./paths";
+import { dayMarksCol, prsCol, userDoc, workoutsCol } from "./paths";
 
 export async function fetchProfile(uid: string): Promise<UserProfile | null> {
   const ref = userDoc(uid);
@@ -88,12 +88,13 @@ export async function deleteAllUserData(uid: string): Promise<void> {
     );
   }
 
-  const [workouts, records] = await Promise.all([
+  const [workouts, records, dayMarks] = await Promise.all([
     getDocs(workoutsCol(uid)),
     getDocs(prsCol(uid)),
+    getDocs(dayMarksCol(uid)),
   ]);
 
-  const docs = [...workouts.docs, ...records.docs];
+  const docs = [...workouts.docs, ...records.docs, ...dayMarks.docs];
 
   // A batch caps at 500 operations, so chunk it.
   const CHUNK = 400;

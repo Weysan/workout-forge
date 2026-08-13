@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   addDays,
   addWeeks,
+  addYears,
   endOfWeek,
   format,
   isSameWeek,
@@ -13,7 +14,9 @@ import {
 import { CalendarIcon, ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
 
 import { cn, toDateKey } from "@/lib/utils";
+import { useDayMarksInRange } from "@/lib/hooks/use-day-marks";
 import { useWorkoutDatesInRange } from "@/lib/hooks/use-workouts";
+import type { DayStatus } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -24,6 +27,10 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
  * A full month grid is the wrong default for daily logging: the athlete almost
  * always wants today or yesterday. The week strip puts those one tap away and
  * hides the month picker behind an icon for the rare jump.
+ *
+ * Days ahead are selectable: writing a session down before doing it is what the
+ * unscored-workout model exists for. The month picker still stops a year out, so
+ * a mis-swipe cannot land the user in 2031 with no idea how they got there.
  */
 export function DateStrip({
   selected,
@@ -56,11 +63,17 @@ export function DateStrip({
   );
 
   // Activity dots come from one range query per visible week.
-  const { data: activeDates } = useWorkoutDatesInRange(
-    toDateKey(weekStart),
-    toDateKey(endOfWeek(weekStart, { weekStartsOn: 1 })),
-  );
+  const weekStartKey = toDateKey(weekStart);
+  const weekEndKey = toDateKey(endOfWeek(weekStart, { weekStartsOn: 1 }));
+
+  const { data: activeDates } = useWorkoutDatesInRange(weekStartKey, weekEndKey);
+  const { data: dayMarks } = useDayMarksInRange(weekStartKey, weekEndKey);
+
   const activeSet = useMemo(() => new Set(activeDates ?? []), [activeDates]);
+  const markByDate = useMemo(
+    () => new Map((dayMarks ?? []).map((mark) => [mark.date, mark.status])),
+    [dayMarks],
+  );
 
   function jumpTo(date: Date) {
     setWeekStart(startOfWeek(date, { weekStartsOn: 1 }));
@@ -97,8 +110,8 @@ export function DateStrip({
                 jumpTo(date);
                 setPickerOpen(false);
               }}
-              // Logging a session for next month is always a mistake.
-              disabled={{ after: new Date() }}
+              // Planning ahead is fine; jumping years ahead never is.
+              disabled={{ after: addYears(new Date(), 1) }}
             />
           </PopoverContent>
         </Popover>
@@ -117,15 +130,17 @@ export function DateStrip({
         {days.map((day) => {
           const key = toDateKey(day);
           const isSelected = key === toDateKey(selected);
-          const hasWorkout = activeSet.has(key);
-          const future = day > new Date() && !isToday(day);
+          const dot = dotClass(
+            activeSet.has(key),
+            markByDate.get(key),
+            isSelected,
+          );
 
           return (
             <button
               key={key}
               type="button"
               onClick={() => onSelect(day)}
-              disabled={future}
               aria-current={isSelected ? "date" : undefined}
               aria-label={format(day, "EEEE d MMMM")}
               className={cn(
@@ -133,7 +148,6 @@ export function DateStrip({
                 isSelected
                   ? "border-primary bg-primary text-primary-foreground shadow-lg shadow-primary/25"
                   : "border-border/70 bg-card/60 hover:bg-elevated",
-                future && "opacity-35",
               )}
             >
               <span
@@ -148,19 +162,12 @@ export function DateStrip({
                 {format(day, "d")}
               </span>
 
-              {/* Today gets a ring; days with sessions get a dot. */}
+              {/* Today gets a ring; accounted-for days get a dot. */}
               {isToday(day) && !isSelected && (
                 <span className="ring-primary/60 pointer-events-none absolute inset-0 rounded-xl ring-2" />
               )}
               <span
-                className={cn(
-                  "size-1.5 rounded-full transition-colors",
-                  hasWorkout
-                    ? isSelected
-                      ? "bg-primary-foreground"
-                      : "bg-primary"
-                    : "bg-transparent",
-                )}
+                className={cn("size-1.5 rounded-full transition-colors", dot)}
               />
             </button>
           );
@@ -168,4 +175,26 @@ export function DateStrip({
       </div>
     </div>
   );
+}
+
+/**
+ * Colour for a day's dot.
+ *
+ * The strip has to answer "which days did I account for?" at a glance, and the
+ * three answers are not the same thing: trained, rested on purpose, or lost to
+ * injury. A day with sessions reads as trained even if it also carries an injury
+ * mark — the training is the more specific fact about the day.
+ *
+ * On the selected day everything sits on the primary fill, where a coloured dot
+ * would be illegible, so it falls back to the contrasting foreground.
+ */
+function dotClass(
+  hasWorkout: boolean,
+  status: DayStatus | undefined,
+  isSelected: boolean,
+): string {
+  if (!hasWorkout && !status) return "bg-transparent";
+  if (isSelected) return "bg-primary-foreground";
+  if (hasWorkout) return "bg-primary";
+  return status === "injured" ? "bg-destructive" : "bg-muted-foreground";
 }

@@ -62,6 +62,15 @@ const validWorkout = (overrides = {}) => ({
   ...overrides,
 });
 
+/** A rest/injury day marker that satisfies every validation rule. */
+const validDayMark = (date, overrides = {}) => ({
+  date,
+  status: "rest",
+  note: "",
+  createdAt: new Date(),
+  ...overrides,
+});
+
 const validRecord = (movementId, overrides = {}) => ({
   movementId,
   name: "Fran",
@@ -289,6 +298,101 @@ describe("workouts", () => {
 
     await assertFails(
       deleteDoc(doc(as(BOB), "users", ALICE, "workouts", "victim")),
+    );
+  });
+});
+
+describe("rest and injury days", () => {
+  it("lets a user mark their own rest day", async () => {
+    await assertSucceeds(
+      setDoc(
+        doc(as(ALICE), "users", ALICE, "days", "2026-08-10"),
+        validDayMark("2026-08-10"),
+      ),
+    );
+  });
+
+  it("lets a user mark an injury with a note", async () => {
+    await assertSucceeds(
+      setDoc(
+        doc(as(ALICE), "users", ALICE, "days", "2026-08-09"),
+        validDayMark("2026-08-09", {
+          status: "injured",
+          note: "Tweaked my lower back on the second set.",
+        }),
+      ),
+    );
+  });
+
+  it("lets a user re-mark a day, replacing the previous marker", async () => {
+    await assertSucceeds(
+      setDoc(
+        doc(as(ALICE), "users", ALICE, "days", "2026-08-10"),
+        validDayMark("2026-08-10", { status: "injured" }),
+      ),
+    );
+  });
+
+  // The document id is the source of truth for which day this is; the field only
+  // exists so ranges are queryable. They must never disagree.
+  it("refuses a date field that disagrees with the document id", async () => {
+    await assertFails(
+      setDoc(
+        doc(as(ALICE), "users", ALICE, "days", "2026-08-10"),
+        validDayMark("2026-08-11"),
+      ),
+    );
+  });
+
+  it("refuses a malformed document id", async () => {
+    await assertFails(
+      setDoc(
+        doc(as(ALICE), "users", ALICE, "days", "10-08-2026"),
+        validDayMark("10-08-2026"),
+      ),
+    );
+  });
+
+  it("refuses an unknown status", async () => {
+    await assertFails(
+      setDoc(
+        doc(as(ALICE), "users", ALICE, "days", "2026-08-08"),
+        validDayMark("2026-08-08", { status: "deload" }),
+      ),
+    );
+  });
+
+  it("refuses an over-long note", async () => {
+    await assertFails(
+      setDoc(
+        doc(as(ALICE), "users", ALICE, "days", "2026-08-08"),
+        validDayMark("2026-08-08", { note: "x".repeat(501) }),
+      ),
+    );
+  });
+
+  it("refuses writing into another user's days", async () => {
+    await assertFails(
+      setDoc(
+        doc(as(BOB), "users", ALICE, "days", "2026-08-07"),
+        validDayMark("2026-08-07"),
+      ),
+    );
+  });
+
+  it("refuses reading another user's days", async () => {
+    await assertFails(getDocs(collection(as(BOB), "users", ALICE, "days")));
+  });
+
+  it("lets a user clear their own marker", async () => {
+    await assertSucceeds(
+      deleteDoc(doc(as(ALICE), "users", ALICE, "days", "2026-08-10")),
+    );
+  });
+
+  it("refuses clearing another user's marker", async () => {
+    await assertFails(
+      deleteDoc(doc(as(BOB), "users", ALICE, "days", "2026-08-09")),
     );
   });
 });

@@ -102,7 +102,7 @@ shell: ## Open a shell inside the running web container
 check: typecheck lint build test ## Run every CI gate locally
 
 .PHONY: test
-test: test-barbell test-offline test-percentages test-share test-rules test-sw ## Run all tests
+test: test-barbell test-offline test-percentages test-stats test-share test-rules test-sw ## Run all tests
 
 .PHONY: test-barbell
 test-barbell: ## Barbell plate loading and warm-up ladders
@@ -115,6 +115,10 @@ test-offline: ## Offline write-acceptance and cache-fallback tests
 .PHONY: test-percentages
 test-percentages: ## Percentage-of-max table arithmetic
 	npm run test:percentages
+
+.PHONY: test-stats
+test-stats: ## Log streak, weekly averages and injured-day counts
+	npm run test:stats
 
 .PHONY: test-share
 test-share: ## Share-card content, clamping and filenames

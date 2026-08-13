@@ -67,6 +67,21 @@ service cloud.firestore {
           && request.resource.data.notes.size() <= 5000;
       }
 
+      // --- Rest and injury days -------------------------------------------
+      // Document id is the YYYY-MM-DD date key, which gives one marker per day
+      // by construction. The `date` field duplicates it so ranges are queryable,
+      // and is pinned to the id here so the two can never disagree.
+      match /days/{dateKey} {
+        allow read, delete: if isOwner(uid);
+
+        allow create, update: if isOwner(uid)
+          && dateKey.matches('^\\d{4}-\\d{2}-\\d{2}$')
+          && request.resource.data.date == dateKey
+          && request.resource.data.status in ['rest', 'injured']
+          && request.resource.data.note is string
+          && request.resource.data.note.size() <= 500;
+      }
+
       // --- Personal records ----------------------------------------------
       // Document id is the movementId, which gives us a natural upsert key.
       match /prs/{movementId} {

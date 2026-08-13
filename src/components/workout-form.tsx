@@ -2,8 +2,9 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { format } from "date-fns";
+import { addYears, format } from "date-fns";
 import {
+  CalendarClockIcon,
   CalendarIcon,
   ClockIcon,
   Loader2Icon,
@@ -60,6 +61,11 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
  * and refusing to save it would push the user into inventing one — so the title
  * is the only hard requirement, and `ScoreSheet` fills the result in later
  * straight from the log.
+ *
+ * Dating a session ahead takes that further and drops the score section
+ * entirely. Everything it asks about — the result, whether it was RX, whether it
+ * beat a record — is only knowable afterwards, so for a planned session the form
+ * captures the intent and nothing else.
  */
 export function WorkoutForm({
   mode,
@@ -116,7 +122,11 @@ export function WorkoutForm({
   const titleError =
     submitted && title.trim().length === 0 ? "Give this workout a name" : null;
 
-  const scored = resolved.scoreValue !== null;
+  // A session dated ahead cannot carry a result. Anything already typed into the
+  // score fields is ignored rather than cleared, so moving the date back to today
+  // brings it straight back.
+  const isPlanned = dateKey > todayKey();
+  const scored = !isPlanned && resolved.scoreValue !== null;
 
   function patchDraft(patch: Partial<ScoreDraft>) {
     setDraft((current) => ({ ...current, ...patch }));
@@ -153,16 +163,21 @@ export function WorkoutForm({
       title: title.trim(),
       type,
       description: description.trim(),
+      // Kept even for a planned session: it records how the workout *will be*
+      // measured, which is what `ScoreSheet` reads when the result goes in.
       scoreType,
-      scoreValue: resolved.scoreValue,
-      scoreDisplay: resolved.scoreDisplay,
+      // Forced empty for a future date rather than trusted from state — the date
+      // can be moved after a score was typed, and a planned session must never
+      // arrive already scored.
+      scoreValue: isPlanned ? null : resolved.scoreValue,
+      scoreDisplay: isPlanned ? "" : resolved.scoreDisplay,
       rxOrScaled,
       // A manual tick is a floor, not the last word: syncRecordForBenchmark
       // recomputes the true record holder immediately after the write. It cannot
       // apply to a session with no result to compare.
       isPR: scored && markAsPR,
       linkedBenchmarkId: benchmark?.id ?? null,
-      reps: resolved.reps,
+      reps: isPlanned ? null : resolved.reps,
       notes: notes.trim(),
     };
 
@@ -176,7 +191,8 @@ export function WorkoutForm({
             })
           : await createWorkout.mutateAsync(input);
 
-      const verb = mode === "edit" ? "updated" : "logged";
+      const verb =
+        mode === "edit" ? "updated" : isPlanned ? "planned" : "logged";
 
       if (result.queued) {
         toast.success(`Workout saved offline`, {
@@ -184,13 +200,15 @@ export function WorkoutForm({
         });
       } else {
         toast.success(`Workout ${verb}`, {
-          description: !scored
-            ? "No score yet — add it from your log once you've trained."
-            : mode === "edit"
-              ? undefined
-              : benchmark
-                ? `Counted towards your ${benchmark.name} record.`
-                : undefined,
+          description: isPlanned
+            ? "Add the result from your log once you've trained."
+            : !scored
+              ? "No score yet — add it from your log once you've trained."
+              : mode === "edit"
+                ? undefined
+                : benchmark
+                  ? `Counted towards your ${benchmark.name} record.`
+                  : undefined,
         });
       }
 
@@ -219,7 +237,11 @@ export function WorkoutForm({
             <XIcon />
           </Button>
           <h1 className="font-display text-sm font-bold tracking-widest uppercase">
-            {mode === "edit" ? "Edit workout" : "Log workout"}
+            {mode === "edit"
+              ? "Edit workout"
+              : isPlanned
+                ? "Plan workout"
+                : "Log workout"}
           </h1>
           <div className="size-9" aria-hidden />
         </div>
@@ -276,7 +298,9 @@ export function WorkoutForm({
                     mode="single"
                     selected={fromDateKey(dateKey)}
                     defaultMonth={fromDateKey(dateKey)}
-                    disabled={{ after: new Date() }}
+                    // Planning ahead is the point; a year out is far enough that
+                    // anything beyond it is a mis-tap.
+                    disabled={{ after: addYears(new Date(), 1) }}
                     onSelect={(date) => {
                       if (!date) return;
                       setDateKey(toDateKey(date));
@@ -328,9 +352,11 @@ export function WorkoutForm({
             <Label htmlFor="scoreType">
               Scored by
               {/* Says up front that this whole section can be skipped. */}
-              <span className="text-muted-foreground/60 font-normal">
-                optional
-              </span>
+              {!isPlanned && (
+                <span className="text-muted-foreground/60 font-normal">
+                  optional
+                </span>
+              )}
             </Label>
             <Select
               value={scoreType}
@@ -349,30 +375,45 @@ export function WorkoutForm({
             </Select>
           </div>
 
-          <ScoreInput
-            scoreType={scoreType}
-            draft={draft}
-            onChange={patchDraft}
-            unitSystem={unitSystem}
-          />
-          {/* Live read-back: confirms the app understood the input before saving.
-              With nothing entered, say plainly that this is a valid way to save,
-              so a blank score does not read as an unfinished form. */}
-          {scored ? (
-            <div className="border-border/70 bg-card/60 flex items-baseline justify-between rounded-xl border px-4 py-3">
-              <span className="text-muted-foreground text-[10px] font-bold tracking-widest uppercase">
-                {scoreTypeLabel(scoreType)}
-              </span>
-              <span className="tabular font-display text-2xl font-extrabold">
-                {resolved.scoreDisplay}
-              </span>
-            </div>
-          ) : (
+          {/* The result fields are withheld for a date in the future: there is
+              nothing honest to type into them yet, and offering them invites a
+              guess that would go on to count as a real result. */}
+          {isPlanned ? (
             <p className="text-muted-foreground/70 flex items-start gap-2 text-xs leading-relaxed">
-              <ClockIcon className="mt-0.5 size-3.5 shrink-0" />
-              Leave this empty to plan the session now — you can add the result
-              from your log afterwards.
+              <CalendarClockIcon className="mt-0.5 size-3.5 shrink-0" />
+              This session is planned for{" "}
+              {format(fromDateKey(dateKey), "d MMM")}. Its result, standard and
+              any record go in from your log once you have trained.
             </p>
+          ) : (
+            <>
+              <ScoreInput
+                scoreType={scoreType}
+                draft={draft}
+                onChange={patchDraft}
+                unitSystem={unitSystem}
+              />
+              {/* Live read-back: confirms the app understood the input before
+                  saving. With nothing entered, say plainly that this is a valid
+                  way to save, so a blank score does not read as an unfinished
+                  form. */}
+              {scored ? (
+                <div className="border-border/70 bg-card/60 flex items-baseline justify-between rounded-xl border px-4 py-3">
+                  <span className="text-muted-foreground text-[10px] font-bold tracking-widest uppercase">
+                    {scoreTypeLabel(scoreType)}
+                  </span>
+                  <span className="tabular font-display text-2xl font-extrabold">
+                    {resolved.scoreDisplay}
+                  </span>
+                </div>
+              ) : (
+                <p className="text-muted-foreground/70 flex items-start gap-2 text-xs leading-relaxed">
+                  <ClockIcon className="mt-0.5 size-3.5 shrink-0" />
+                  Leave this empty to plan the session now — you can add the
+                  result from your log afterwards.
+                </p>
+              )}
+            </>
           )}
         </section>
 
@@ -380,19 +421,23 @@ export function WorkoutForm({
 
         {/* --- Tags -------------------------------------------------------- */}
         <section className="space-y-5">
-          <div className="space-y-2">
-            <Label>Standard</Label>
-            <ToggleGroup
-              type="single"
-              value={rxOrScaled}
-              onValueChange={(value) => {
-                if (value) setRxOrScaled(value as RxOrScaled);
-              }}
-            >
-              <ToggleGroupItem value="RX">RX</ToggleGroupItem>
-              <ToggleGroupItem value="Scaled">Scaled</ToggleGroupItem>
-            </ToggleGroup>
-          </div>
+          {/* Whether a session was scaled is settled by doing it, so a planned one
+              does not ask. `ScoreSheet` puts the question with the result. */}
+          {!isPlanned && (
+            <div className="space-y-2">
+              <Label>Standard</Label>
+              <ToggleGroup
+                type="single"
+                value={rxOrScaled}
+                onValueChange={(value) => {
+                  if (value) setRxOrScaled(value as RxOrScaled);
+                }}
+              >
+                <ToggleGroupItem value="RX">RX</ToggleGroupItem>
+                <ToggleGroupItem value="Scaled">Scaled</ToggleGroupItem>
+              </ToggleGroup>
+            </div>
+          )}
 
           {/* Hidden until there is a score: a record with no result behind it
               cannot be compared against anything, so offering the tick would be
@@ -461,7 +506,11 @@ export function WorkoutForm({
           </Button>
           <Button type="submit" className="flex-[2]" disabled={pending}>
             {pending && <Loader2Icon className="animate-spin" />}
-            {mode === "edit" ? "Save changes" : "Log workout"}
+            {mode === "edit"
+              ? "Save changes"
+              : isPlanned
+                ? "Plan workout"
+                : "Log workout"}
           </Button>
         </div>
       </div>

@@ -7,13 +7,14 @@ import {
   endOfWeek,
   format,
   isToday,
+  isTomorrow,
   isYesterday,
   startOfWeek,
 } from "date-fns";
 import { PlusIcon, TrophyIcon } from "lucide-react";
 import { toast } from "sonner";
 
-import { fromDateKey, toDateKey } from "@/lib/utils";
+import { fromDateKey, toDateKey, todayKey } from "@/lib/utils";
 import {
   useDeleteWorkout,
   useWorkoutDatesInRange,
@@ -22,6 +23,7 @@ import {
 import { useProfile } from "@/lib/hooks/use-profile";
 import type { Workout } from "@/lib/types";
 import { DateStrip } from "@/components/date-strip";
+import { DayStatusBar } from "@/components/day-status-bar";
 import { EmptyDay, WorkoutCard } from "@/components/workout-card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -68,12 +70,18 @@ function Log() {
 
   const prCount = (workouts ?? []).filter((w) => w.isPR).length;
 
-  // "today" / "yesterday" read better than a date on the two days that matter most.
+  // Days ahead are for planning: a session can be written down, but it has no
+  // result yet and none can be entered until the day arrives.
+  const isFuture = dateKey > todayKey();
+
+  // "today" / "yesterday" read better than a date on the days that matter most.
   const relativeLabel = isToday(selected)
     ? "today"
     : isYesterday(selected)
       ? "yesterday"
-      : `on ${format(selected, "d MMM")}`;
+      : isTomorrow(selected)
+        ? "tomorrow"
+        : `on ${format(selected, "d MMM")}`;
 
   async function handleDelete(workout: Workout) {
     try {
@@ -111,6 +119,8 @@ function Log() {
 
       <DateStrip selected={selected} onSelect={setSelected} />
 
+      <DayStatusBar dateKey={dateKey} workouts={workouts} isFuture={isFuture} />
+
       <section className="space-y-3">
         <div className="flex items-center justify-between gap-2 pt-1">
           <h2 className="font-display text-sm font-bold tracking-widest uppercase">
@@ -140,7 +150,7 @@ function Log() {
             ))}
           </div>
         ) : (
-          <EmptyDay dateLabel={relativeLabel} />
+          <EmptyDay dateLabel={relativeLabel} isFuture={isFuture} dateKey={dateKey} />
         )}
       </section>
 
@@ -149,11 +159,11 @@ function Log() {
         asChild
         size="lg"
         className="fixed right-4 z-40 h-14 rounded-2xl px-5 shadow-2xl shadow-primary/30 bottom-safe mb-16"
-        aria-label="Log a workout"
+        aria-label={isFuture ? "Plan a workout" : "Log a workout"}
       >
         <Link href={`/workout/new?date=${dateKey}`}>
           <PlusIcon className="size-5" />
-          Log
+          {isFuture ? "Plan" : "Log"}
         </Link>
       </Button>
     </div>

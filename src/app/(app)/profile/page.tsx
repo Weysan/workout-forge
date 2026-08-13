@@ -16,6 +16,7 @@ import { useProfile, useUpdateProfile } from "@/lib/hooks/use-profile";
 import { useSyncStatus } from "@/lib/hooks/use-sync-status";
 import { KG_PER_LB, LB_PER_KG } from "@/lib/units";
 import type { Gender, UnitSystem } from "@/lib/types";
+import { TrainingStats } from "@/components/training-stats";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -164,6 +165,9 @@ export default function ProfilePage() {
           </p>
         </div>
       </section>
+
+      {/* --- Habit --- */}
+      <TrainingStats />
 
       {/* --- Settings --- */}
       <Card>

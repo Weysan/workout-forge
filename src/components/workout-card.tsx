@@ -4,6 +4,8 @@ import { useState } from "react";
 import Link from "next/link";
 import { format } from "date-fns";
 import {
+  CalendarClockIcon,
+  CalendarPlusIcon,
   FlameIcon,
   MoreVerticalIcon,
   PencilIcon,
@@ -13,7 +15,7 @@ import {
   TrophyIcon,
 } from "lucide-react";
 
-import { cn, fromDateKey } from "@/lib/utils";
+import { cn, fromDateKey, todayKey } from "@/lib/utils";
 import { formatScore, isScored, scoreTypeLabel } from "@/lib/scoring";
 import { buildWorkoutCard } from "@/lib/share-card";
 import { useUnitSystem } from "@/lib/hooks/use-profile";
@@ -67,6 +69,10 @@ export function WorkoutCard({
       )
     : null;
 
+  // A session dated ahead has not happened, so there is no result to enter. The
+  // score panel appears on its own once the day arrives.
+  const isPlanned = workout.date > todayKey();
+
   // Only a finished session is worth posting: a workout planned for Thursday has
   // no result to show, and an image of a blank score is not a share.
   const shareCard =
@@ -114,6 +120,12 @@ export function WorkoutCard({
               <Badge variant="pr">
                 <TrophyIcon />
                 PR
+              </Badge>
+            )}
+            {isPlanned && (
+              <Badge variant="outline">
+                <CalendarClockIcon />
+                Planned
               </Badge>
             )}
           </div>
@@ -203,8 +215,10 @@ export function WorkoutCard({
       </div>
 
       {/* The whole point of logging a session before doing it: the result goes in
-          from here, in one tap, instead of a round trip through the full form. */}
-      {score === null && (
+          from here, in one tap, instead of a round trip through the full form.
+          Withheld until the day arrives — there is nothing honest to type into it
+          for a session that has not been done yet. */}
+      {score === null && !isPlanned && (
         <div className="border-t border-border/60 p-3">
           <Button
             variant="secondary"
@@ -273,21 +287,41 @@ export function WorkoutCard({
   );
 }
 
-/** Shown when the selected day has nothing logged. */
-export function EmptyDay({ dateLabel }: { dateLabel: string }) {
+/** Shown when the selected day has nothing on it. */
+export function EmptyDay({
+  dateLabel,
+  isFuture,
+  dateKey,
+}: {
+  dateLabel: string;
+  /** A day ahead is empty because it has not happened, not because it was missed. */
+  isFuture: boolean;
+  dateKey: string;
+}) {
   return (
     <div className="border-border/70 bg-card/40 flex flex-col items-center gap-4 rounded-2xl border border-dashed px-6 py-14 text-center">
       <div className="bg-elevated grid size-14 place-items-center rounded-2xl">
-        <FlameIcon className="text-muted-foreground size-6" />
+        {isFuture ? (
+          <CalendarPlusIcon className="text-muted-foreground size-6" />
+        ) : (
+          <FlameIcon className="text-muted-foreground size-6" />
+        )}
       </div>
       <div className="space-y-1">
-        <h3 className="text-lg font-bold">Nothing logged {dateLabel}</h3>
+        <h3 className="text-lg font-bold">
+          {isFuture ? "Nothing planned" : "Nothing logged"} {dateLabel}
+        </h3>
         <p className="text-muted-foreground mx-auto max-w-xs text-sm">
-          Log a WOD, a heavy single or a run — anything you did counts.
+          {isFuture
+            ? "Write the session down now and fill in the result once you've done it."
+            : "Log a WOD, a heavy single or a run — anything you did counts."}
         </p>
       </div>
+      {/* Carries the day being viewed, so the form does not open on today. */}
       <Button asChild variant="secondary">
-        <Link href="/workout/new">Log a workout</Link>
+        <Link href={`/workout/new?date=${dateKey}`}>
+          {isFuture ? "Plan a workout" : "Log a workout"}
+        </Link>
       </Button>
     </div>
   );

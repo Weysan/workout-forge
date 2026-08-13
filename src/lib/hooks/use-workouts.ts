@@ -33,6 +33,9 @@ function invalidateAfterWrite(
 ) {
   queryClient.invalidateQueries({ queryKey: root(uid) });
   queryClient.invalidateQueries({ queryKey: ["prs", uid] });
+  // Writing a session onto a rest day clears that day's marker — see
+  // `releaseRestDaySafely` — so the day views have to be re-read too.
+  queryClient.invalidateQueries({ queryKey: ["dayMarks", uid] });
 }
 
 export function useWorkoutsByDate(dateKey: string) {

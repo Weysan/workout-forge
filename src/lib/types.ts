@@ -78,6 +78,31 @@ export interface Workout {
 /** Payload accepted by the create/update mutations. */
 export type WorkoutInput = Omit<Workout, "id" | "createdAt">;
 
+export type DayStatus = "rest" | "injured";
+
+/**
+ * `users/{uid}/days/{dateKey}` — document id *is* the date key.
+ *
+ * A day the athlete accounted for without training: deliberate recovery, or time
+ * lost to an injury. Kept out of `workouts` on purpose — a rest day has no
+ * title, score, standard or PR, and putting one in the log would have it
+ * counted as a session by every query that reads it.
+ *
+ * `status` is a single field, so a day cannot be both rest and injured. The
+ * document id being the date key means one marker per day by construction, and
+ * marking the same day twice is a no-op upsert rather than a duplicate.
+ */
+export interface DayMark {
+  /** `YYYY-MM-DD`. Duplicated from the document id so ranges are queryable. */
+  date: string;
+  status: DayStatus;
+  note: string;
+  createdAt: Timestamp | null;
+}
+
+/** Payload accepted by the set mutation. */
+export type DayMarkInput = Omit<DayMark, "createdAt">;
+
 /** `users/{uid}/prs/{movementId}` — document id is the movement id. */
 export interface PersonalRecord {
   movementId: string;

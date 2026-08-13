@@ -19,6 +19,7 @@ import {
 
 import { acceptWrite, readWithCacheFallback } from "@/lib/offline";
 import type { Workout, WorkoutInput } from "@/lib/types";
+import { clearDayMark, fetchDayMark } from "./day-marks";
 import { workoutDoc, workoutsCol } from "./paths";
 import { syncRecordForBenchmark } from "./records";
 
@@ -141,6 +142,8 @@ export async function createWorkout(
     setDoc(ref, { ...input, createdAt: serverTimestamp() }),
   );
 
+  await releaseRestDaySafely(uid, input.date);
+
   // The record table is derived data, so it is refreshed after every write that
   // could change it rather than being maintained by hand at each call site. This
   // reads through the local cache, which already reflects the write above, so it
@@ -163,6 +166,9 @@ export async function updateWorkout(
     `update workout ${workoutId}`,
     updateDoc(workoutDoc(uid, workoutId), { ...input }),
   );
+
+  // An edit can move a session onto a day that was marked as rest.
+  await releaseRestDaySafely(uid, input.date);
 
   const affected = new Set(
     [input.linkedBenchmarkId, previousBenchmarkId].filter(
@@ -191,6 +197,36 @@ export async function deleteWorkout(
   }
 
   return { id: workoutId, queued: !outcome.acked };
+}
+
+/**
+ * Drop the rest-day marker on a day that has just had a session written to it.
+ *
+ * A day cannot be both "rested" and "trained", and of the two the workout is the
+ * stronger claim: it is a thing that happened, whereas the rest mark was a plan.
+ * The UI stops you marking rest on a day that already has workouts, so this
+ * covers the other direction — logging or re-dating a session onto a rest day.
+ *
+ * An injury mark is deliberately left alone: getting hurt during a session is
+ * exactly when you would record one.
+ *
+ * Failure-tolerant for the same reason as `syncRecordsSafely` below — the
+ * workout is already saved by the time this runs, so rejecting here would report
+ * a saved session as an error and invite a retry that files a duplicate.
+ */
+async function releaseRestDaySafely(uid: string, dateKey: string) {
+  try {
+    const mark = await fetchDayMark(uid, dateKey);
+    if (mark?.status === "rest") {
+      await clearDayMark(uid, dateKey);
+    }
+  } catch (error) {
+    console.warn(
+      `[forge] the rest marker on ${dateKey} could not be cleared; ` +
+        "the day will show as both rested and trained until it is re-marked.",
+      error,
+    );
+  }
 }
 
 /**

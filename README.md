@@ -57,8 +57,21 @@ owner check and means there is no shared or public data to reason about.
 ```
 users/{uid}                     profile, unit preference, gender
 users/{uid}/workouts/{id}       one logged session
+users/{uid}/days/{YYYY-MM-DD}   a rest or injury day
 users/{uid}/prs/{movementId}    derived personal records
 ```
+
+A rest day is not a workout with a different type. It has no title, score,
+standard or PR, so modelling it as one would put it in the day feed, the "days
+trained this week" counter, the benchmark history query and the share card, all
+of which would then need to special-case it. A separate collection keeps
+`scoring.ts` and `records.ts` unaware that rest days exist at all.
+
+The document id *is* the date key, which makes one marker per day true by
+construction — marking the same day twice is an upsert, not a duplicate — and
+makes rest and injured mutually exclusive, since they are values of one
+`status` field. The same key is duplicated into a `date` field so ranges are
+queryable; the rules pin the two together so they cannot disagree.
 
 ### Three storage invariants
 
@@ -134,6 +147,20 @@ src/
   handlers, server actions, middleware and ISR are likewise unavailable.
 - **Offline is a normal operating mode, not an error state.** See the section
   below — it is the constraint that shapes the whole write path.
+- **Planning ahead is a UI affordance over an invariant that already existed.**
+  `scoreValue: null` has always meant "logged but not scored yet", so dating a
+  session into the future needed no schema change — only unlocking the pickers.
+  What the UI adds is the other half of the rule: a form on a future date hides
+  the result, standard and PR fields entirely and forces them empty on submit,
+  because none of them can be known in advance and a guess would go on to count
+  as a real result. Scoring is therefore available for today and the past only,
+  through `ScoreSheet` on the card. Records need no protection of their own —
+  `syncRecordForBenchmark` already skips unscored sessions.
+- **The profile's habit numbers are recomputed, never stored.** A streak or a
+  weekly average kept as a counter would have to be corrected on every edit,
+  backdated entry and deletion, and would drift the first time one was missed.
+  `src/lib/stats.ts` derives all four from the same two range queries the
+  calendar already makes, so they are correct by construction and work offline.
 - **Auth guarding is client-side** (`src/components/auth-gate.tsx`). Firebase
   keeps its session in IndexedDB, not a cookie the server can read, so a server
   guard would mean building a session-cookie layer. Access is already enforced by
@@ -223,6 +250,7 @@ is no test framework to configure.
 |---|---|---|
 | `tests/offline.test.mjs` | `make test-offline` | 11 assertions on write acceptance, queueing and cache fallback |
 | `tests/percentages.test.mjs` | `make test-percentages` | 9 tests on the percentage-of-max arithmetic and step ordering |
+| `tests/stats.test.mjs` | `make test-stats` | 26 tests on the log streak, the weekly averages and their window |
 | `tests/barbell.test.mjs` | `make test-barbell` | plate loading and warm-up ladders, in integer hundredths |
 | `tests/share-card.test.mjs` | `make test-share` | 25 tests on what lands on a shared image: WOD clamping, badges, filenames |
 | `tests/firestore.rules.test.mjs` | `make test-rules` | 28 assertions on the owner boundary and document validation |
@@ -234,8 +262,8 @@ suite runs against the *built* `out/sw.js`, because the thing worth testing is t
 artefact including its generated precache manifest. The offline and percentage
 suites import `src/lib/offline.ts` and `src/lib/percentages.ts` directly via Node's
 built-in type stripping — neither module has imports of its own, which is what
-makes them testable without a bundler. `share-card.ts` and `barbell.ts` are kept
-import-free for the same reason.
+makes them testable without a bundler. `share-card.ts`, `barbell.ts` and
+`stats.ts` are kept import-free for the same reason.
 
 ---
 
