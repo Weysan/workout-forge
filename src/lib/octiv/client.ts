@@ -12,6 +12,7 @@
 
 import { shiftDayKey } from "@/lib/stats";
 import type { OctivConnection } from "@/lib/types";
+import { readCachedWod, writeCachedWod } from "./cache";
 import { camelizeKeys } from "./camelize";
 import type { OctivLoginResponse, OctivWod, OctivWodsResponse } from "./types";
 
@@ -96,7 +97,9 @@ async function request<T>(url: string, init: RequestInit): Promise<T> {
  * Exchange credentials for a bearer token.
  *
  * The password is used here and nowhere else — it is never stored, and never
- * leaves this call.
+ * leaves this call. Deliberately never cached, unlike the WOD read below: the
+ * token it returns is the thing worth keeping, and `lib/firestore/profile.ts`
+ * already keeps it.
  */
 export async function octivLogin(
   username: string,
@@ -147,11 +150,29 @@ export function isConnectionExpired(
  * The date filters are a half-open range — `startsAfter` the day itself,
  * `endsBefore` the next — which is what returns exactly one day. Every other
  * filter is fixed.
+ *
+ * Answers are cached locally for half a day, indexed by the three parameters
+ * that vary the request — see `cache.ts`. Browsing back through the calendar is
+ * the common case, and without this it would be one request per day, per visit,
+ * for programming that was settled weeks ago. Pass `{ refresh: true }` to go to
+ * the network regardless, which also refreshes the entry.
  */
 export async function fetchOctivWod(
   connection: OctivConnection,
   dateKey: string,
+  { refresh = false }: { refresh?: boolean } = {},
 ): Promise<OctivWod | null> {
+  const cacheParams = {
+    tenantId: OCTIV_TENANT_ID,
+    programmeId: OCTIV_PROGRAMME_ID,
+    dateKey,
+  };
+
+  if (!refresh) {
+    const cached = readCachedWod(cacheParams);
+    if (cached) return cached.wod;
+  }
+
   const query = new URLSearchParams({
     "filter[tenantId]": String(OCTIV_TENANT_ID),
     "filter[startsAfter]": dateKey,
@@ -167,5 +188,11 @@ export async function fetchOctivWod(
     },
   });
 
-  return body.data?.[0] ?? null;
+  const wod = body.data?.[0] ?? null;
+
+  // Only a successful read is cached. A failure — offline, a 500, a rejected
+  // token — leaves the entry alone, so the next attempt is a real one.
+  writeCachedWod(cacheParams, wod);
+
+  return wod;
 }

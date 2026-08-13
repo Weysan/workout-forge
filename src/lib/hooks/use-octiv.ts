@@ -9,6 +9,7 @@ import {
 } from "@/lib/firestore/profile";
 import { profileKey, useProfile } from "@/lib/hooks/use-profile";
 import { useSyncStatus } from "@/lib/hooks/use-sync-status";
+import { WOD_CACHE_TTL_MS, clearWodCache } from "@/lib/octiv/cache";
 import {
   OctivAuthError,
   fetchOctivWod,
@@ -18,8 +19,13 @@ import {
 import type { OctivWod } from "@/lib/octiv/types";
 import type { UserProfile } from "@/lib/types";
 
-/** Octiv's programming is published in advance and rarely edited after. */
-const WOD_STALE_MS = 5 * 60 * 1000;
+/**
+ * Octiv's programming is published in advance and rarely edited after, so a day
+ * that has been read is left alone for as long as `cache.ts` would have served
+ * it anyway. Matching the two means a remount inside the window does not even
+ * reach `localStorage`, and never reaches Octiv.
+ */
+const WOD_STALE_MS = WOD_CACHE_TTL_MS;
 
 /**
  * The connected Octiv account, read off the profile that is already loaded.
@@ -88,8 +94,10 @@ export function useDisconnectOctiv() {
         queryClient.setQueryData<UserProfile>(key, { ...previous, octiv: null });
       }
       // The day panel is keyed per date; dropping them all avoids a stale WOD
-      // reappearing on a day that was already visited.
+      // reappearing on a day that was already visited. The local half-day cache
+      // has to go with them, or it would outlive the connection it came from.
       queryClient.removeQueries({ queryKey: ["octiv"] });
+      clearWodCache();
     },
   });
 }

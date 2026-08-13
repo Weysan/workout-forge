@@ -102,7 +102,7 @@ shell: ## Open a shell inside the running web container
 check: typecheck lint build test ## Run every CI gate locally
 
 .PHONY: test
-test: test-barbell test-offline test-percentages test-stats test-share test-octiv test-rules test-sw ## Run all tests
+test: test-barbell test-offline test-percentages test-stats test-share test-octiv test-octiv-cache test-rules test-sw ## Run all tests
 
 .PHONY: test-barbell
 test-barbell: ## Barbell plate loading and warm-up ladders
@@ -127,6 +127,10 @@ test-share: ## Share-card content, clamping and filenames
 .PHONY: test-octiv
 test-octiv: ## Octiv → workout mapping (score types, ordering, clamping)
 	npm run test:octiv
+
+.PHONY: test-octiv-cache
+test-octiv-cache: ## Octiv WOD cache (TTLs, indexing, unusable storage)
+	npm run test:octiv-cache
 
 .PHONY: test-rules
 test-rules: ## Firestore security-rules tests (starts the emulator if needed)

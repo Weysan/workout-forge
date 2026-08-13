@@ -22,6 +22,7 @@
     "test:barbell": "node --test tests/barbell.test.mjs",
     "test:share": "node --test tests/share-card.test.mjs",
     "test:octiv": "node --test tests/octiv.test.mjs",
+    "test:octiv-cache": "node --test tests/octiv-cache.test.mjs",
     "emulators": "firebase emulators:start --import=./.emulator-data/data --export-on-exit=./.emulator-data/data",
     "emulators:clean": "firebase emulators:start"
   },

@@ -130,6 +130,20 @@ The calls go straight from the browser to `api.octivfitness.com`, which is only
 possible because it sends `access-control-allow-origin: *`. There is no server in
 this app to proxy through.
 
+Which also means there is no server-side cache to lean on, and scrolling back
+through the calendar would otherwise be one request per day, per visit, for
+programming that was settled weeks ago. So a day that has been read is kept in
+`localStorage` for **half a day**, indexed by the parameters that vary the request
+— tenant, programme and date (`src/lib/octiv/cache.ts`). React Query's `staleTime`
+is set to the same window, so a remount inside it does not even reach storage.
+
+Two deliberate exceptions. **Login is never cached**: it exchanges a password for
+a token, and the token is already kept on the user document. And **"nothing
+published yet" expires in 30 minutes for today and later**, because unlike a
+finished day that answer still changes — a coach posting the evening session at
+lunchtime would otherwise stay invisible until tomorrow. Disconnecting the account
+clears the cache with it.
+
 ### Layout
 
 ```
@@ -278,6 +292,7 @@ is no test framework to configure.
 | `tests/barbell.test.mjs` | `make test-barbell` | plate loading and warm-up ladders, in integer hundredths |
 | `tests/share-card.test.mjs` | `make test-share` | 25 tests on what lands on a shared image: WOD clamping, badges, filenames |
 | `tests/octiv.test.mjs` | `make test-octiv` | 14 tests on turning a day of Octiv programming into workouts |
+| `tests/octiv-cache.test.mjs` | `make test-octiv-cache` | 19 tests on the WOD cache: TTLs, parameter indexing, unusable storage |
 | `tests/firestore.rules.test.mjs` | `make test-rules` | 33 assertions on the owner boundary and document validation |
 | `tests/service-worker.test.mjs` | `make test-sw` | 15 assertions that the built worker can serve every route offline |
 
