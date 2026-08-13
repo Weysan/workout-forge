@@ -117,6 +117,33 @@ export async function setOctivConnection(
   );
 }
 
+/**
+ * Move the stored connection's expiry to now, keeping everything else, and
+ * return what was written.
+ *
+ * For the one case the issued expiry cannot describe: Octiv refusing a token
+ * before the date it came with, because it was revoked or the password behind it
+ * changed. Recording that as an expiry puts the athlete in the state the profile
+ * card already has words and a button for.
+ *
+ * Deliberately not `clearOctivConnection` — deleting the field would take the
+ * username with it and read as the app quietly forgetting the integration, when
+ * what actually happened is that it needs signing into again.
+ */
+export async function expireOctivConnection(
+  uid: string,
+  connection: OctivConnection,
+): Promise<OctivConnection> {
+  const expired: OctivConnection = {
+    ...connection,
+    expiresAt: new Date().toISOString(),
+  };
+
+  await acceptWrite("expire octiv", updateDoc(userDoc(uid), { octiv: expired }));
+
+  return expired;
+}
+
 /** Remove the field outright — an emptied object would still read as connected. */
 export async function clearOctivConnection(uid: string): Promise<void> {
   await acceptWrite(
