@@ -24,6 +24,7 @@ import { useProfile } from "@/lib/hooks/use-profile";
 import type { Workout } from "@/lib/types";
 import { DateStrip } from "@/components/date-strip";
 import { DayStatusBar } from "@/components/day-status-bar";
+import { OctivWodPanel } from "@/components/octiv-wod-panel";
 import { EmptyDay, WorkoutCard } from "@/components/workout-card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -152,6 +153,11 @@ function Log() {
         ) : (
           <EmptyDay dateLabel={relativeLabel} isFuture={isFuture} dateKey={dateKey} />
         )}
+
+        {/* Below the day's sessions: what was done comes before what the box
+            programmed. Renders nothing unless Octiv is connected and has a WOD
+            for this day that is not in the log yet. */}
+        <OctivWodPanel dateKey={dateKey} workouts={workouts} />
       </section>
 
       {/* Sits above the bottom nav, inside the thumb arc, on every scroll position. */}

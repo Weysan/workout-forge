@@ -21,6 +21,17 @@ service cloud.firestore {
       return value is string && value.size() > 0 && value.size() <= maxLen;
     }
 
+    // A connected Octiv account, or no field at all. The token is a bearer
+    // credential for a third-party API, so its shape is pinned here rather than
+    // left to whatever the client happens to write: only the owner can ever read
+    // it, and nothing else in the app may masquerade as it.
+    function isValidOctiv(data) {
+      return !data.keys().hasAny(['octiv'])
+        || (data.octiv is map
+            && isNonEmptyString(data.octiv.get('accessToken', ''), 8192)
+            && data.octiv.get('expiresAt', '') is string);
+    }
+
     // --- User profile ----------------------------------------------------
     match /users/{uid} {
       allow read: if isOwner(uid);
@@ -29,14 +40,16 @@ service cloud.firestore {
         && request.resource.data.uid == uid
         && isNonEmptyString(request.resource.data.displayName, 60)
         && request.resource.data.gender in ['male', 'female', 'non_binary']
-        && request.resource.data.unitSystem in ['metric', 'imperial'];
+        && request.resource.data.unitSystem in ['metric', 'imperial']
+        && isValidOctiv(request.resource.data);
 
       allow update: if isOwner(uid)
         // uid is immutable once written.
         && request.resource.data.uid == resource.data.uid
         && isNonEmptyString(request.resource.data.displayName, 60)
         && request.resource.data.gender in ['male', 'female', 'non_binary']
-        && request.resource.data.unitSystem in ['metric', 'imperial'];
+        && request.resource.data.unitSystem in ['metric', 'imperial']
+        && isValidOctiv(request.resource.data);
 
       allow delete: if isOwner(uid);
 
@@ -63,6 +76,10 @@ service cloud.firestore {
               || (request.resource.data.scoreValue is number
                   && request.resource.data.scoreValue >= 0))
           && request.resource.data.isPR is bool
+          // Set only on sessions imported from Octiv, where it is the id of the
+          // piece of programming they came from.
+          && (request.resource.data.get('octivExerciseId', null) == null
+              || request.resource.data.octivExerciseId is string)
           && request.resource.data.description.size() <= 5000
           && request.resource.data.notes.size() <= 5000;
       }

@@ -55,7 +55,7 @@ Everything is scoped under `users/{uid}`, which makes the security rules a singl
 owner check and means there is no shared or public data to reason about.
 
 ```
-users/{uid}                     profile, unit preference, gender
+users/{uid}                     profile, unit preference, gender, integrations
 users/{uid}/workouts/{id}       one logged session
 users/{uid}/days/{YYYY-MM-DD}   a rest or injury day
 users/{uid}/prs/{movementId}    derived personal records
@@ -107,6 +107,29 @@ app like this never happen here:
    your current best does not steal the PR badge — and backdating one that beats it
    correctly takes the record, dated to when it actually happened.
 
+### Integrations
+
+Optional, and only one so far. Connecting an Octiv account from
+Profile → Integrations stores its bearer token as an `octiv` map on the user
+document — the one place only its owner can read (see `firestore.rules`) and the
+one that follows the athlete to their other devices. The password is used once,
+to sign in, and is never stored.
+
+With that in place, the log shows the box's programming for whichever day is
+selected, and imports it in one tap. An Octiv WOD holds several pieces with
+different measuring units, so each becomes its own workout scored on its own
+terms — `src/lib/octiv/mapping.ts` does that translation and is where the
+guesswork lives.
+
+What is imported is an ordinary workout: editable, scorable, deletable, and
+invisible to every query that does not know Octiv exists. The single trace is
+`octivExerciseId`, which exists so the same piece is not offered twice — delete
+an imported card and the panel offers it again, which is the behaviour you want.
+
+The calls go straight from the browser to `api.octivfitness.com`, which is only
+possible because it sends `access-control-allow-origin: *`. There is no server in
+this app to proxy through.
+
 ### Layout
 
 ```
@@ -131,6 +154,7 @@ src/
     barbell.ts        fewest-plates loading and warm-up ladders
     score-draft.ts    form-state model for the dynamic score inputs
     firestore/        data access, one module per collection
+    octiv/            the gym's programming: API client + WOD → workout mapping
     hooks/            React Query hooks
   constants/
     seedData.ts       the benchmark library (bundled, never fetched)
@@ -253,7 +277,8 @@ is no test framework to configure.
 | `tests/stats.test.mjs` | `make test-stats` | 26 tests on the log streak, the weekly averages and their window |
 | `tests/barbell.test.mjs` | `make test-barbell` | plate loading and warm-up ladders, in integer hundredths |
 | `tests/share-card.test.mjs` | `make test-share` | 25 tests on what lands on a shared image: WOD clamping, badges, filenames |
-| `tests/firestore.rules.test.mjs` | `make test-rules` | 28 assertions on the owner boundary and document validation |
+| `tests/octiv.test.mjs` | `make test-octiv` | 14 tests on turning a day of Octiv programming into workouts |
+| `tests/firestore.rules.test.mjs` | `make test-rules` | 33 assertions on the owner boundary and document validation |
 | `tests/service-worker.test.mjs` | `make test-sw` | 15 assertions that the built worker can serve every route offline |
 
 The rules suite runs against an isolated emulator project, so it is safe to run
@@ -263,7 +288,8 @@ artefact including its generated precache manifest. The offline and percentage
 suites import `src/lib/offline.ts` and `src/lib/percentages.ts` directly via Node's
 built-in type stripping — neither module has imports of its own, which is what
 makes them testable without a bundler. `share-card.ts`, `barbell.ts` and
-`stats.ts` are kept import-free for the same reason.
+`stats.ts` are kept import-free for the same reason, and `octiv/mapping.ts`
+imports types only, which are erased before Node ever sees them.
 
 ---
 

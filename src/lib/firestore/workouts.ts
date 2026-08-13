@@ -40,6 +40,9 @@ function toWorkout(snapshot: QueryDocumentSnapshot<DocumentData>): Workout {
     isPR: Boolean(data.isPR),
     linkedBenchmarkId: data.linkedBenchmarkId ?? null,
     reps: typeof data.reps === "number" ? data.reps : null,
+    // Absent on everything logged by hand, which is the common case.
+    octivExerciseId:
+      typeof data.octivExerciseId === "string" ? data.octivExerciseId : null,
     notes: data.notes ?? "",
     createdAt: data.createdAt ?? null,
   };

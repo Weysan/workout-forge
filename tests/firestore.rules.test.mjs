@@ -178,6 +178,36 @@ describe("profiles", () => {
       }),
     );
   });
+
+  // The Octiv bearer token lives on the profile. It is a credential for a third
+  // party's API, so it is only ever readable by its owner — which the profile
+  // rules above already establish — and has to arrive in a usable shape.
+  it("allows storing an Octiv connection", async () => {
+    await assertSucceeds(
+      updateDoc(doc(as(ALICE), "users", ALICE), {
+        octiv: {
+          accessToken: "eyJ0eXAiOiJKV1Qi.token",
+          tokenType: "Bearer",
+          expiresAt: "2027-08-13T14:30:43.000Z",
+          username: "athlete@example.com",
+        },
+      }),
+    );
+  });
+
+  it("refuses an Octiv connection with no token", async () => {
+    await assertFails(
+      updateDoc(doc(as(ALICE), "users", ALICE), {
+        octiv: { accessToken: "", expiresAt: "2027-08-13T14:30:43.000Z" },
+      }),
+    );
+  });
+
+  it("refuses an Octiv connection that is not a map", async () => {
+    await assertFails(
+      updateDoc(doc(as(ALICE), "users", ALICE), { octiv: "a-bare-token" }),
+    );
+  });
 });
 
 describe("workouts", () => {
@@ -204,6 +234,26 @@ describe("workouts", () => {
         scoreValue: 255,
         scoreDisplay: "04:15",
       }),
+    );
+  });
+
+  // A session imported from Octiv is an ordinary workout carrying the id of the
+  // programming it came from, so the same day is not offered for import twice.
+  it("lets a user log a workout imported from Octiv", async () => {
+    await assertSucceeds(
+      setDoc(
+        doc(as(ALICE), "users", ALICE, "workouts", "imported"),
+        validWorkout({ octivExerciseId: "1780164" }),
+      ),
+    );
+  });
+
+  it("refuses an Octiv id that is not a string", async () => {
+    await assertFails(
+      setDoc(
+        doc(as(ALICE), "users", ALICE, "workouts", "bad-octiv-id"),
+        validWorkout({ octivExerciseId: 1780164 }),
+      ),
     );
   });
 

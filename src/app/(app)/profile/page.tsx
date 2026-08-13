@@ -16,6 +16,7 @@ import { useProfile, useUpdateProfile } from "@/lib/hooks/use-profile";
 import { useSyncStatus } from "@/lib/hooks/use-sync-status";
 import { KG_PER_LB, LB_PER_KG } from "@/lib/units";
 import type { Gender, UnitSystem } from "@/lib/types";
+import { OctivConnectCard } from "@/components/octiv-connect-card";
 import { TrainingStats } from "@/components/training-stats";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -39,6 +40,7 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 const GENDER_OPTIONS: { value: Gender; label: string }[] = [
   { value: "female", label: "Female" },
@@ -166,130 +168,146 @@ export default function ProfilePage() {
         </div>
       </section>
 
-      {/* --- Habit --- */}
-      <TrainingStats />
+      {/* Integrations are a separate concern from who you are and how you like
+          your units, and there will be more of them than Octiv. A tab keeps
+          them out of the way of the settings people actually visit. */}
+      <Tabs defaultValue="you" className="space-y-5">
+        <TabsList>
+          <TabsTrigger value="you">Profile</TabsTrigger>
+          <TabsTrigger value="integrations">Integrations</TabsTrigger>
+        </TabsList>
 
-      {/* --- Settings --- */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-sm tracking-widest uppercase">
-            Settings
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <div className="space-y-2">
-            <Label htmlFor="displayName">Display name</Label>
-            <div className="flex gap-2">
-              <Input
-                id="displayName"
-                value={displayName}
-                maxLength={60}
-                onChange={(event) => {
-                  setNameDirty(true);
-                  setDisplayName(event.target.value);
-                }}
-                onBlur={saveName}
-              />
-              {nameDirty && (
-                <Button
-                  size="icon"
-                  aria-label="Save name"
-                  onClick={saveName}
-                  disabled={updateProfile.isPending}
-                >
-                  {updateProfile.isPending ? (
-                    <Loader2Icon className="animate-spin" />
-                  ) : (
-                    <CheckIcon />
+        <TabsContent value="you" className="space-y-5">
+          {/* --- Habit --- */}
+          <TrainingStats />
+
+          {/* --- Settings --- */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm tracking-widest uppercase">
+                Settings
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="space-y-2">
+                <Label htmlFor="displayName">Display name</Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="displayName"
+                    value={displayName}
+                    maxLength={60}
+                    onChange={(event) => {
+                      setNameDirty(true);
+                      setDisplayName(event.target.value);
+                    }}
+                    onBlur={saveName}
+                  />
+                  {nameDirty && (
+                    <Button
+                      size="icon"
+                      aria-label="Save name"
+                      onClick={saveName}
+                      disabled={updateProfile.isPending}
+                    >
+                      {updateProfile.isPending ? (
+                        <Loader2Icon className="animate-spin" />
+                      ) : (
+                        <CheckIcon />
+                      )}
+                    </Button>
                   )}
-                </Button>
-              )}
-            </div>
-          </div>
+                </div>
+              </div>
 
-          {/* Units --------------------------------------------------------- */}
-          <div className="space-y-2">
-            <Label htmlFor="units">Units</Label>
-            <label
-              htmlFor="units"
-              className="border-border bg-input/40 flex min-h-14 cursor-pointer items-center justify-between gap-4 rounded-xl border px-4 py-3"
-            >
-              <span className="min-w-0">
-                <span className="block font-semibold">
-                  {isImperial ? "Imperial" : "Metric"}
-                </span>
-                <span className="text-muted-foreground block text-xs">
-                  {isImperial ? "lbs · miles" : "kg · km"}
-                </span>
-              </span>
-              <Switch
-                id="units"
-                checked={isImperial}
-                onCheckedChange={(checked) =>
-                  setUnitSystem(checked ? "imperial" : "metric")
-                }
-              />
-            </label>
-            <p className="text-muted-foreground/70 text-xs leading-relaxed">
-              Loads are stored in kilograms and converted on display
-              {" "}({LB_PER_KG.toFixed(5)} lbs per kg, {KG_PER_LB.toFixed(5)} kg
-              per lb), so switching re-labels your whole history without changing
-              a single record.
-            </p>
-          </div>
+              {/* Units ----------------------------------------------------- */}
+              <div className="space-y-2">
+                <Label htmlFor="units">Units</Label>
+                <label
+                  htmlFor="units"
+                  className="border-border bg-input/40 flex min-h-14 cursor-pointer items-center justify-between gap-4 rounded-xl border px-4 py-3"
+                >
+                  <span className="min-w-0">
+                    <span className="block font-semibold">
+                      {isImperial ? "Imperial" : "Metric"}
+                    </span>
+                    <span className="text-muted-foreground block text-xs">
+                      {isImperial ? "lbs · miles" : "kg · km"}
+                    </span>
+                  </span>
+                  <Switch
+                    id="units"
+                    checked={isImperial}
+                    onCheckedChange={(checked) =>
+                      setUnitSystem(checked ? "imperial" : "metric")
+                    }
+                  />
+                </label>
+                <p className="text-muted-foreground/70 text-xs leading-relaxed">
+                  Loads are stored in kilograms and converted on display
+                  {" "}({LB_PER_KG.toFixed(5)} lbs per kg, {KG_PER_LB.toFixed(5)}{" "}
+                  kg per lb), so switching re-labels your whole history without
+                  changing a single record.
+                </p>
+              </div>
 
-          {/* Gender -------------------------------------------------------- */}
-          <div className="space-y-2">
-            <Label htmlFor="gender">Gender</Label>
-            <Select
-              value={profile.gender}
-              onValueChange={(value) => setGender(value as Gender)}
-            >
-              <SelectTrigger id="gender">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {GENDER_OPTIONS.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </CardContent>
-      </Card>
+              {/* Gender ---------------------------------------------------- */}
+              <div className="space-y-2">
+                <Label htmlFor="gender">Gender</Label>
+                <Select
+                  value={profile.gender}
+                  onValueChange={(value) => setGender(value as Gender)}
+                >
+                  <SelectTrigger id="gender">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {GENDER_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </CardContent>
+          </Card>
 
-      {/* --- Account --- */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-sm tracking-widest uppercase">
-            Account
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          <Button
-            variant="secondary"
-            className="w-full justify-start"
-            onClick={handleSignOut}
-          >
-            <LogOutIcon />
-            Sign out
-          </Button>
+          {/* --- Account --- */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm tracking-widest uppercase">
+                Account
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              <Button
+                variant="secondary"
+                className="w-full justify-start"
+                onClick={handleSignOut}
+              >
+                <LogOutIcon />
+                Sign out
+              </Button>
 
-          <Button
-            variant="ghost"
-            className="text-destructive hover:bg-destructive/10 hover:text-destructive w-full justify-start"
-            onClick={() => {
-              setDeleteConfirm("");
-              setDeleteOpen(true);
-            }}
-          >
-            <Trash2Icon />
-            Delete account
-          </Button>
-        </CardContent>
-      </Card>
+              <Button
+                variant="ghost"
+                className="text-destructive hover:bg-destructive/10 hover:text-destructive w-full justify-start"
+                onClick={() => {
+                  setDeleteConfirm("");
+                  setDeleteOpen(true);
+                }}
+              >
+                <Trash2Icon />
+                Delete account
+              </Button>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="integrations">
+          <OctivConnectCard />
+        </TabsContent>
+      </Tabs>
 
       {/* Irreversible, so it asks the user to type the word rather than tap once. */}
       <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>

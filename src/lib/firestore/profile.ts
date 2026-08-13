@@ -1,5 +1,6 @@
 import {
   deleteDoc,
+  deleteField,
   getDoc,
   getDocFromCache,
   getDocs,
@@ -11,8 +12,36 @@ import {
 
 import { getDb } from "@/lib/firebase";
 import { acceptWrite, isOnline, readWithCacheFallback } from "@/lib/offline";
-import type { Gender, UnitSystem, UserProfile } from "@/lib/types";
+import type {
+  Gender,
+  OctivConnection,
+  UnitSystem,
+  UserProfile,
+} from "@/lib/types";
 import { dayMarksCol, prsCol, userDoc, workoutsCol } from "./paths";
+
+/**
+ * The stored Octiv connection, or `null` if it is not there or not usable.
+ *
+ * Written by an older build, half-written, or hand-edited: any of those would
+ * otherwise reach `fetch` as an `undefined` token and fail as a network error
+ * rather than as the "not connected" it actually is.
+ */
+function toOctivConnection(value: unknown): OctivConnection | null {
+  if (!value || typeof value !== "object") return null;
+
+  const raw = value as Record<string, unknown>;
+  if (typeof raw.accessToken !== "string" || raw.accessToken.length === 0) {
+    return null;
+  }
+
+  return {
+    accessToken: raw.accessToken,
+    tokenType: typeof raw.tokenType === "string" ? raw.tokenType : "Bearer",
+    expiresAt: typeof raw.expiresAt === "string" ? raw.expiresAt : "",
+    username: typeof raw.username === "string" ? raw.username : "",
+  };
+}
 
 export async function fetchProfile(uid: string): Promise<UserProfile | null> {
   const ref = userDoc(uid);
@@ -35,6 +64,7 @@ export async function fetchProfile(uid: string): Promise<UserProfile | null> {
     photoURL: data.photoURL ?? null,
     gender: (data.gender as Gender) ?? "non_binary",
     unitSystem: (data.unitSystem as UnitSystem) ?? "metric",
+    octiv: toOctivConnection(data.octiv),
     createdAt: data.createdAt ?? null,
   };
 }
@@ -67,6 +97,32 @@ export async function updateProfile(
   patch: Partial<Pick<UserProfile, "displayName" | "gender" | "unitSystem">>,
 ): Promise<void> {
   await acceptWrite("update profile", updateDoc(userDoc(uid), patch));
+}
+
+/**
+ * Store the Octiv bearer token on the user document.
+ *
+ * Kept here rather than on the device so the connection follows the athlete to
+ * their phone, and because the user document is already the one place only they
+ * can read (see firestore.rules). The password that produced the token is never
+ * written anywhere.
+ */
+export async function setOctivConnection(
+  uid: string,
+  connection: OctivConnection,
+): Promise<void> {
+  await acceptWrite(
+    "connect octiv",
+    updateDoc(userDoc(uid), { octiv: connection }),
+  );
+}
+
+/** Remove the field outright — an emptied object would still read as connected. */
+export async function clearOctivConnection(uid: string): Promise<void> {
+  await acceptWrite(
+    "disconnect octiv",
+    updateDoc(userDoc(uid), { octiv: deleteField() }),
+  );
 }
 
 /**

@@ -22,6 +22,24 @@ export type RxOrScaled = "RX" | "Scaled";
 
 export type BenchmarkCategory = "Lift" | "Benchmark" | "Hero" | "Run";
 
+/**
+ * A connected Octiv account, stored on the user document.
+ *
+ * The password is used once, to log in, and never stored. What is kept is the
+ * bearer token Octiv hands back, which is long-lived (a year), so it lives in
+ * the user's own Firestore subtree — readable by nobody else, and available on
+ * every device they sign in from.
+ */
+export interface OctivConnection {
+  accessToken: string;
+  /** "Bearer" in every response seen so far; sent back as-is. */
+  tokenType: string;
+  /** ISO instant, derived from `expiresIn` at login. */
+  expiresAt: string;
+  /** Shown as "connected as". The login identifier, never the password. */
+  username: string;
+}
+
 /** `users/{uid}` */
 export interface UserProfile {
   uid: string;
@@ -30,6 +48,8 @@ export interface UserProfile {
   photoURL?: string | null;
   gender: Gender;
   unitSystem: UnitSystem;
+  /** Absent or null when no Octiv account is connected. */
+  octiv?: OctivConnection | null;
   createdAt: Timestamp | null;
 }
 
@@ -71,6 +91,15 @@ export interface Workout {
   linkedBenchmarkId: string | null;
   /** Reps performed at `scoreValue` kg. Strength lifts only. */
   reps?: number | null;
+  /**
+   * The `wodExercises[].id` this session was imported from, when it came in
+   * from Octiv. Absent on everything logged by hand.
+   *
+   * It exists so the day's Octiv panel can tell what has already been imported
+   * without a second query — the day's workouts are loaded anyway — and so
+   * deleting an imported card offers that piece again rather than losing it.
+   */
+  octivExerciseId?: string | null;
   notes: string;
   createdAt: Timestamp | null;
 }
