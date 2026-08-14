@@ -257,6 +257,23 @@ describe("workouts", () => {
     );
   });
 
+  // The position a session holds within its day, written for a whole day at a
+  // time by the reorder panel.
+  it("lets a user arrange a session within its day", async () => {
+    await assertSucceeds(
+      updateDoc(doc(as(ALICE), "users", ALICE, "workouts", "w1"), { order: 0 }),
+    );
+  });
+
+  it("refuses a negative or non-integer position", async () => {
+    await assertFails(
+      updateDoc(doc(as(ALICE), "users", ALICE, "workouts", "w1"), { order: -1 }),
+    );
+    await assertFails(
+      updateDoc(doc(as(ALICE), "users", ALICE, "workouts", "w1"), { order: 1.5 }),
+    );
+  });
+
   it("refuses writing into another user's log", async () => {
     await assertFails(
       setDoc(doc(as(BOB), "users", ALICE, "workouts", "w2"), validWorkout()),

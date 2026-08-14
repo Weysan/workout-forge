@@ -163,6 +163,7 @@ src/
   lib/
     firebase.ts       lazy client singletons + emulator wiring
     scoring.ts        score normalisation, PR comparison, formatting
+    day-order.ts      the order a day's sessions are read in
     units.ts          kg ↔ lbs
     percentages.ts    percentage-of-max table off a logged best
     barbell.ts        fewest-plates loading and warm-up ladders
@@ -194,6 +195,21 @@ src/
   as a real result. Scoring is therefore available for today and the past only,
   through `ScoreSheet` on the card. Records need no protection of their own —
   `syncRecordForBenchmark` already skips unscored sessions.
+- **A day's sessions are ordered by hand, not guessed at.** The log reads newest
+  first, which for a day typed up as it happened is that day backwards. So the
+  athlete arranges it — drag or arrows, in the panel behind **Order** on the day
+  heading — and the arrangement is stored as an `order` field per workout, written
+  for the whole day in one batch (`setDayOrder`). Guessing from `createdAt`
+  instead would be wrong for exactly the cases that matter: a day imported from
+  Octiv, or three sessions typed up in the evening.
+
+  `src/lib/day-order.ts` holds the rules and is import-free, so they are tested
+  without a browser (`make test-day-order`). The two worth knowing: the sort is
+  applied *after* the query rather than by it, so no composite index and no
+  backfill are needed — a document written before this existed simply has no
+  position; and a session logged after a day was arranged sorts to the end, which
+  is where a session done later belongs. `order` is deliberately absent from
+  `WorkoutInput`, so editing a score can never shuffle the day as a side effect.
 - **The profile's habit numbers are recomputed, never stored.** A streak or a
   weekly average kept as a counter would have to be corrected on every edit,
   backdated entry and deletion, and would drift the first time one was missed.
@@ -290,10 +306,11 @@ is no test framework to configure.
 | `tests/percentages.test.mjs` | `make test-percentages` | 9 tests on the percentage-of-max arithmetic and step ordering |
 | `tests/stats.test.mjs` | `make test-stats` | 26 tests on the log streak, the weekly averages and their window |
 | `tests/barbell.test.mjs` | `make test-barbell` | plate loading and warm-up ladders, in integer hundredths |
-| `tests/share-card.test.mjs` | `make test-share` | 25 tests on what lands on a shared image: WOD clamping, badges, filenames |
+| `tests/share-card.test.mjs` | `make test-share` | 35 tests on what lands on a shared image: WOD clamping, badges, day rows, filenames |
+| `tests/day-order.test.mjs` | `make test-day-order` | 23 tests on the order a day's sessions read in: sorting, nudging, renumbering |
 | `tests/octiv.test.mjs` | `make test-octiv` | 14 tests on turning a day of Octiv programming into workouts |
 | `tests/octiv-cache.test.mjs` | `make test-octiv-cache` | 19 tests on the WOD cache: TTLs, parameter indexing, unusable storage |
-| `tests/firestore.rules.test.mjs` | `make test-rules` | 33 assertions on the owner boundary and document validation |
+| `tests/firestore.rules.test.mjs` | `make test-rules` | 48 tests on the owner boundary and document validation |
 | `tests/service-worker.test.mjs` | `make test-sw` | 15 assertions that the built worker can serve every route offline |
 
 The rules suite runs against an isolated emulator project, so it is safe to run
@@ -302,8 +319,8 @@ suite runs against the *built* `out/sw.js`, because the thing worth testing is t
 artefact including its generated precache manifest. The offline and percentage
 suites import `src/lib/offline.ts` and `src/lib/percentages.ts` directly via Node's
 built-in type stripping — neither module has imports of its own, which is what
-makes them testable without a bundler. `share-card.ts`, `barbell.ts` and
-`stats.ts` are kept import-free for the same reason, and `octiv/mapping.ts`
+makes them testable without a bundler. `share-card.ts`, `barbell.ts`,
+`day-order.ts` and `stats.ts` are kept import-free for the same reason, and `octiv/mapping.ts`
 imports types only, which are erased before Node ever sees them.
 
 ---
@@ -383,9 +400,22 @@ logged offline is uploaded later.
 
 ## Sharing to Instagram
 
-A standing record (the panel behind a movement on **Performance**) and a scored
-session (the ⋯ menu on a workout card) can be turned into an image sized for
-Instagram — **1080×1920** for a story, **1080×1350** for the feed.
+Three things can be turned into an image sized for Instagram — **1080×1920** for a
+story, **1080×1350** for the feed:
+
+| What | Where | The poster |
+|---|---|---|
+| A standing record | the panel behind a movement on **Performance** | the movement, and the record in the largest type on the card |
+| One scored session | the ⋯ menu on a workout card | the WOD, and its result |
+| A whole training day | the share button on the day heading | every scored session of that day, in the order it was arranged, one row each |
+
+The day card is a second composition rather than the same one repeated: several
+sessions have no shared unit and therefore no total, so inventing one hero number
+would put the least interesting fact in the biggest type. The rows carry it
+instead — up to five, after which the card says how many it did not show, because
+five rows is the most that stays legible on a phone. Unscored sessions are left
+off entirely, for the same reason a card refuses to share one: a poster of a
+result that does not exist yet is not a share.
 
 ### There is no "post to Stories" API
 

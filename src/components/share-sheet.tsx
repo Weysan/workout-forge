@@ -195,7 +195,11 @@ export function ShareSheet({
               // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={previewUrl}
-                alt={`${card.title} — ${card.value}, as a shareable image`}
+                alt={
+                  card.kind === "day"
+                    ? `${card.title} — ${card.badges[0] ?? "the day's sessions"}, as a shareable image`
+                    : `${card.title} — ${card.value}, as a shareable image`
+                }
                 className="h-full w-full object-cover"
               />
             ) : (

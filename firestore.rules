@@ -80,6 +80,11 @@ service cloud.firestore {
           // piece of programming they came from.
           && (request.resource.data.get('octivExerciseId', null) == null
               || request.resource.data.octivExerciseId is string)
+          // Position within its day, written for a whole day at a time by the
+          // reorder panel. Absent on every day nobody has arranged.
+          && (request.resource.data.get('order', null) == null
+              || (request.resource.data.order is int
+                  && request.resource.data.order >= 0))
           && request.resource.data.description.size() <= 5000
           && request.resource.data.notes.size() <= 5000;
       }

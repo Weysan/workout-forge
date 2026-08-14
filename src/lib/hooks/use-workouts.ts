@@ -10,6 +10,7 @@ import {
   fetchWorkout,
   fetchWorkoutDatesInRange,
   fetchWorkoutsByDate,
+  setDayOrder,
   updateWorkout,
 } from "@/lib/firestore/workouts";
 import type { Workout, WorkoutInput } from "@/lib/types";
@@ -119,6 +120,59 @@ export function useUpdateWorkout() {
     },
     onSuccess: () => {
       if (user) invalidateAfterWrite(queryClient, user.uid);
+    },
+  });
+}
+
+/**
+ * Persists the order the athlete arranged a day into.
+ *
+ * The list is rewritten in the cache before the batch is issued: the panel this
+ * runs from closes on save, and a day that snapped back to its old order for a
+ * moment would read as a failed write. Only `order` changes, so the cached
+ * documents are otherwise correct — no refetch is needed for the day to be right.
+ */
+export function useReorderWorkouts(dateKey: string) {
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
+  const uid = user?.uid ?? "anonymous";
+  const listKey = workoutKeys.byDate(uid, dateKey);
+
+  return useMutation({
+    mutationFn: async (workoutIds: readonly string[]) => {
+      if (!user) throw new Error("Not signed in");
+      return setDayOrder(user.uid, dateKey, workoutIds);
+    },
+
+    onMutate: async (workoutIds) => {
+      await queryClient.cancelQueries({ queryKey: listKey });
+      const previous = queryClient.getQueryData<Workout[]>(listKey);
+
+      queryClient.setQueryData<Workout[]>(listKey, (current) => {
+        if (!current) return current;
+        const byId = new Map(current.map((workout) => [workout.id, workout]));
+        // flatMap rather than map + filter: an id with no document behind it —
+        // deleted from another tab, say — drops out instead of leaving a hole.
+        return workoutIds.flatMap<Workout>((id, index) => {
+          const workout = byId.get(id);
+          return workout ? [{ ...workout, order: index }] : [];
+        });
+      });
+
+      return { previous };
+    },
+
+    onError: (_error, _workoutIds, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(listKey, context.previous);
+      }
+    },
+
+    // Deliberately narrower than `invalidateAfterWrite`: an arrangement cannot
+    // change a score, so no record or day marker is affected by it. Only the
+    // day's own list is re-read.
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: listKey });
     },
   });
 }

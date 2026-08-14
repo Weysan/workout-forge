@@ -22,8 +22,10 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
 const {
+  DAY_ENTRY_MAX,
   DESCRIPTION_MAX_LINES,
   SHARE_FORMATS,
+  buildDayCard,
   buildPrCard,
   buildWorkoutCard,
   clampLines,
@@ -166,6 +168,99 @@ describe("buildPrCard", () => {
   });
 });
 
+describe("buildDayCard", () => {
+  const entry = (title, value, isPR = false) => ({
+    title,
+    detail: "For Time · RX",
+    value,
+    isPR,
+  });
+
+  const base = {
+    title: "Friday 14 August",
+    dateLabel: "2026",
+    dateKey: "2026-08-14",
+    entries: [entry("Warm-up", "Completed"), entry("Fran", "4:15")],
+  };
+
+  it("produces a complete card, in the order it was given", () => {
+    const card = buildDayCard(base);
+    assert.equal(card.kind, "day");
+    assert.equal(card.eyebrow, "Training day");
+    assert.equal(card.title, "Friday 14 August");
+    // The arrangement is the athlete's; nothing here may re-sort it.
+    assert.deepEqual(
+      card.entries.map((e) => e.title),
+      ["Warm-up", "Fran"],
+    );
+    assert.equal(card.hiddenCount, 0);
+    assert.equal(card.highlight, false);
+  });
+
+  it("counts the sessions in a badge", () => {
+    assert.deepEqual(buildDayCard(base).badges, ["2 sessions"]);
+    assert.deepEqual(
+      buildDayCard({ ...base, entries: [entry("Fran", "4:15")] }).badges,
+      ["1 session"],
+    );
+  });
+
+  it("counts records in a badge and highlights the day", () => {
+    const card = buildDayCard({
+      ...base,
+      entries: [entry("Fran", "4:15", true), entry("Back Squat", "140 kg")],
+    });
+    assert.deepEqual(card.badges, ["2 sessions", "1 PR"]);
+    assert.equal(card.highlight, true);
+    // Only the record's own row gets the gradient.
+    assert.deepEqual(
+      card.entries.map((e) => e.highlight),
+      [true, false],
+    );
+  });
+
+  it("pluralises more than one record", () => {
+    const card = buildDayCard({
+      ...base,
+      entries: [entry("Fran", "4:15", true), entry("Squat", "140 kg", true)],
+    });
+    assert.deepEqual(card.badges, ["2 sessions", "2 PRs"]);
+  });
+
+  it("keeps only what fits and says how much it dropped", () => {
+    const many = Array.from({ length: DAY_ENTRY_MAX + 2 }, (_, i) =>
+      entry(`Piece ${i}`, `${i} reps`),
+    );
+    const card = buildDayCard({ ...base, entries: many });
+    assert.equal(card.entries.length, DAY_ENTRY_MAX);
+    assert.equal(card.hiddenCount, 2);
+    // The badge still counts the whole day, not just the visible rows.
+    assert.deepEqual(card.badges[0], `${DAY_ENTRY_MAX + 2} sessions`);
+  });
+
+  it("highlights a day whose only record did not fit on the card", () => {
+    const many = Array.from({ length: DAY_ENTRY_MAX + 1 }, (_, i) =>
+      entry(`Piece ${i}`, `${i} reps`, i === DAY_ENTRY_MAX),
+    );
+    const card = buildDayCard({ ...base, entries: many });
+    assert.equal(card.highlight, true);
+    assert.deepEqual(card.badges[1], "1 PR");
+  });
+
+  it("drops an empty detail rather than reserving space for it", () => {
+    const card = buildDayCard({
+      ...base,
+      entries: [{ title: "Fran", detail: "", value: "4:15", isPR: false }],
+    });
+    assert.equal(card.entries[0].detail, undefined);
+  });
+
+  it("names its file for the day, not for the heading", () => {
+    // "forge-friday-14-august-2026-08-14.png" would say the date twice.
+    assert.equal(shareFilename(buildDayCard(base)), "forge-day-2026-08-14.png");
+  });
+});
+
 describe("shareFilename", () => {
   const card = (title, dateKey) =>
     buildPrCard({
@@ -236,6 +331,42 @@ describe("shareCaption", () => {
       url,
     );
     assert.match(caption, /^Fran — 4:15/);
+  });
+
+  it("lists the day's sessions for a day card", () => {
+    // A day has no single result to lead with, and the targets that show a
+    // caption and nothing else should still get the whole day.
+    const caption = shareCaption(
+      buildDayCard({
+        title: "Friday 14 August",
+        dateKey: "2026-08-14",
+        entries: [
+          { title: "Back Squat", value: "140 kg × 3", isPR: true },
+          { title: "Fran", value: "4:15", isPR: false },
+        ],
+      }),
+      url,
+    );
+
+    assert.match(caption, /^Friday 14 August — 2 sessions/);
+    assert.ok(caption.includes("Back Squat — 140 kg × 3"));
+    assert.ok(caption.includes("Fran — 4:15"));
+    assert.ok(caption.includes(url));
+  });
+
+  it("counts the sessions a day card had no room for", () => {
+    const caption = shareCaption(
+      buildDayCard({
+        title: "Friday 14 August",
+        entries: Array.from({ length: DAY_ENTRY_MAX + 3 }, (_, i) => ({
+          title: `Piece ${i}`,
+          value: `${i} reps`,
+          isPR: false,
+        })),
+      }),
+      url,
+    );
+    assert.ok(caption.includes("+3 more"));
   });
 
   it("always carries the app link, since that is the only link Instagram drops", () => {

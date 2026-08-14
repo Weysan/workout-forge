@@ -11,20 +11,30 @@ import {
   isYesterday,
   startOfWeek,
 } from "date-fns";
-import { PlusIcon, TrophyIcon } from "lucide-react";
+import {
+  ArrowUpDownIcon,
+  PlusIcon,
+  Share2Icon,
+  TrophyIcon,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import { fromDateKey, toDateKey, todayKey } from "@/lib/utils";
+import { formatScore, isScored } from "@/lib/scoring";
+import { buildDayCard } from "@/lib/share-card";
 import {
   useDeleteWorkout,
   useWorkoutDatesInRange,
   useWorkoutsByDate,
 } from "@/lib/hooks/use-workouts";
-import { useProfile } from "@/lib/hooks/use-profile";
+import { useProfile, useUnitSystem } from "@/lib/hooks/use-profile";
 import type { Workout } from "@/lib/types";
+import { workoutTypeLabel } from "@/constants/seedData";
 import { DateStrip } from "@/components/date-strip";
 import { DayStatusBar } from "@/components/day-status-bar";
 import { OctivWodPanel } from "@/components/octiv-wod-panel";
+import { ReorderSheet } from "@/components/reorder-sheet";
+import { ShareSheet } from "@/components/share-sheet";
 import { EmptyDay, WorkoutCard } from "@/components/workout-card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -54,8 +64,12 @@ function Log() {
   const dateKey = toDateKey(selected);
 
   const { data: profile } = useProfile();
+  const unitSystem = useUnitSystem();
   const { data: workouts, isPending } = useWorkoutsByDate(dateKey);
   const deleteWorkout = useDeleteWorkout(dateKey);
+
+  const [reorderOpen, setReorderOpen] = useState(false);
+  const [shareDayOpen, setShareDayOpen] = useState(false);
 
   const thisWeek = useMemo(() => {
     const now = new Date();
@@ -70,6 +84,40 @@ function Log() {
   );
 
   const prCount = (workouts ?? []).filter((w) => w.isPR).length;
+
+  /**
+   * The whole day as one poster, or null when there is nothing to post.
+   *
+   * Only scored sessions go on it, for the same reason a single card refuses to
+   * share an unscored one: a planned session has no result, and a row reading
+   * "—" is not something anybody wants on a story. The order is the day's own —
+   * whatever the athlete arranged — because a poster that disagreed with the
+   * screen it came from would be the wrong poster.
+   */
+  const dayCard = useMemo(() => {
+    const scored = (workouts ?? []).filter(isScored);
+    if (scored.length === 0) return null;
+
+    return buildDayCard({
+      // The log's own heading, so the image and the screen say the same thing.
+      title: format(selected, "EEEE d MMMM"),
+      // The year, which the title leaves out — a poster of a past season should
+      // still say which one.
+      dateLabel: format(selected, "yyyy"),
+      dateKey,
+      entries: scored.map((workout) => ({
+        title: workout.title,
+        detail: `${workoutTypeLabel(workout.type)} · ${workout.rxOrScaled}`,
+        value: formatScore(
+          workout.scoreType,
+          workout.scoreValue,
+          unitSystem,
+          workout.reps,
+        ),
+        isPR: workout.isPR,
+      })),
+    });
+  }, [workouts, selected, dateKey, unitSystem]);
 
   // Days ahead are for planning: a session can be written down, but it has no
   // result yet and none can be entered until the day arrives.
@@ -124,15 +172,44 @@ function Log() {
 
       <section className="space-y-3">
         <div className="flex items-center justify-between gap-2 pt-1">
-          <h2 className="font-display text-sm font-bold tracking-widest uppercase">
+          <h2 className="font-display truncate text-sm font-bold tracking-widest uppercase">
             {format(selected, "EEEE d MMMM")}
           </h2>
-          {prCount > 0 && (
-            <span className="text-primary inline-flex items-center gap-1 text-[11px] font-bold tracking-widest uppercase">
-              <TrophyIcon className="size-3.5" />
-              {prCount} PR{prCount > 1 ? "s" : ""}
-            </span>
-          )}
+
+          <div className="flex shrink-0 items-center gap-1">
+            {prCount > 0 && (
+              <span className="text-primary mr-1 inline-flex items-center gap-1 text-[11px] font-bold tracking-widest uppercase">
+                <TrophyIcon className="size-3.5" />
+                {prCount} PR{prCount > 1 ? "s" : ""}
+              </span>
+            )}
+
+            {/* Nothing to arrange on a day with one session. */}
+            {(workouts?.length ?? 0) > 1 && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-muted-foreground gap-1.5 text-[11px] font-bold tracking-widest uppercase"
+                onClick={() => setReorderOpen(true)}
+              >
+                <ArrowUpDownIcon className="size-3.5" />
+                Order
+              </Button>
+            )}
+
+            {/* One image for the whole day, rather than one per session — see
+                buildDayCard. Absent until at least one session has a result. */}
+            {dayCard && (
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label="Share this day"
+                onClick={() => setShareDayOpen(true)}
+              >
+                <Share2Icon />
+              </Button>
+            )}
+          </div>
         </div>
 
         {isPending ? (
@@ -159,6 +236,21 @@ function Log() {
             for this day that is not in the log yet. */}
         <OctivWodPanel dateKey={dateKey} workouts={workouts} />
       </section>
+
+      {/* Both panels stay mounted while they animate out, the same arrangement as
+          the sheets on a workout card. */}
+      <ReorderSheet
+        dateKey={dateKey}
+        workouts={workouts ?? []}
+        open={reorderOpen}
+        onOpenChange={setReorderOpen}
+      />
+
+      <ShareSheet
+        card={dayCard}
+        open={shareDayOpen}
+        onOpenChange={setShareDayOpen}
+      />
 
       {/* Sits above the bottom nav, inside the thumb arc, on every scroll position. */}
       <Button

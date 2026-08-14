@@ -461,6 +461,16 @@ export const WORKOUT_TYPE_OPTIONS = [
   { value: "Custom", label: "Custom" },
 ] as const;
 
+/**
+ * The label for a stored `WorkoutType`.
+ *
+ * Falls back to the stored value, which is readable enough ("Hyrox") and is what
+ * a document written by a future version would carry.
+ */
+export function workoutTypeLabel(type: string): string {
+  return WORKOUT_TYPE_OPTIONS.find((o) => o.value === type)?.label ?? type;
+}
+
 export const SCORE_TYPE_OPTIONS = [
   { value: "time_seconds", label: "Time" },
   { value: "rounds_reps", label: "Rounds + Reps" },

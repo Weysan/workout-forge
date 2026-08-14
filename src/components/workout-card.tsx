@@ -20,7 +20,7 @@ import { formatScore, isScored, scoreTypeLabel } from "@/lib/scoring";
 import { buildWorkoutCard } from "@/lib/share-card";
 import { useUnitSystem } from "@/lib/hooks/use-profile";
 import type { Workout } from "@/lib/types";
-import { WORKOUT_TYPE_OPTIONS } from "@/constants/seedData";
+import { workoutTypeLabel } from "@/constants/seedData";
 import { ScoreSheet } from "@/components/score-sheet";
 import { ShareSheet } from "@/components/share-sheet";
 import { Badge } from "@/components/ui/badge";
@@ -40,10 +40,6 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-
-function typeLabel(type: Workout["type"]) {
-  return WORKOUT_TYPE_OPTIONS.find((o) => o.value === type)?.label ?? type;
-}
 
 export function WorkoutCard({
   workout,
@@ -80,7 +76,7 @@ export function WorkoutCard({
       ? null
       : buildWorkoutCard({
           title: workout.title,
-          typeLabel: typeLabel(workout.type),
+          typeLabel: workoutTypeLabel(workout.type),
           rxOrScaled: workout.rxOrScaled,
           isPR: workout.isPR,
           description: workout.description,
@@ -105,7 +101,7 @@ export function WorkoutCard({
       <div className="flex items-start justify-between gap-2 p-4 pb-3">
         <div className="min-w-0 flex-1 space-y-2">
           <div className="flex flex-wrap items-center gap-1.5">
-            <Badge variant="outline">{typeLabel(workout.type)}</Badge>
+            <Badge variant="outline">{workoutTypeLabel(workout.type)}</Badge>
             {/* RX vs Scaled is only settled once the session has been done, so an
                 unscored card shows no standard rather than the placeholder the
                 plan was saved with. The score panel asks for it. */}

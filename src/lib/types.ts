@@ -92,6 +92,16 @@ export interface Workout {
   /** Reps performed at `scoreValue` kg. Strength lifts only. */
   reps?: number | null;
   /**
+   * Position within its day, from 0 — the sequence the athlete trained it in.
+   *
+   * Absent until the day is arranged, and then written for every session on that
+   * day at once; see lib/day-order.ts for the sorting rules that follow. Not part
+   * of `WorkoutInput`, because it belongs to the day rather than to the session:
+   * the form never sets it, and an edit that omits it leaves the arrangement
+   * intact.
+   */
+  order?: number | null;
+  /**
    * The `wodExercises[].id` this session was imported from, when it came in
    * from Octiv. Absent on everything logged by hand.
    *
@@ -104,8 +114,14 @@ export interface Workout {
   createdAt: Timestamp | null;
 }
 
-/** Payload accepted by the create/update mutations. */
-export type WorkoutInput = Omit<Workout, "id" | "createdAt">;
+/**
+ * Payload accepted by the create/update mutations.
+ *
+ * `order` is excluded deliberately: it is set by the reorder panel, for a whole
+ * day at a time, and an edit that carried a stale copy of it would shuffle the
+ * day as a side effect of changing a score.
+ */
+export type WorkoutInput = Omit<Workout, "id" | "createdAt" | "order">;
 
 export type DayStatus = "rest" | "injured";
 

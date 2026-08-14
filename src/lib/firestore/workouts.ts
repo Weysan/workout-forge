@@ -12,11 +12,14 @@ import {
   setDoc,
   updateDoc,
   where,
+  writeBatch,
   type DocumentData,
   type Query,
   type QueryDocumentSnapshot,
 } from "firebase/firestore";
 
+import { assignOrder, sortDayOrder } from "@/lib/day-order";
+import { getDb } from "@/lib/firebase";
 import { acceptWrite, readWithCacheFallback } from "@/lib/offline";
 import type { Workout, WorkoutInput } from "@/lib/types";
 import { clearDayMark, fetchDayMark } from "./day-marks";
@@ -40,6 +43,8 @@ function toWorkout(snapshot: QueryDocumentSnapshot<DocumentData>): Workout {
     isPR: Boolean(data.isPR),
     linkedBenchmarkId: data.linkedBenchmarkId ?? null,
     reps: typeof data.reps === "number" ? data.reps : null,
+    // Absent on every day nobody has arranged, which is most of them.
+    order: typeof data.order === "number" ? data.order : null,
     // Absent on everything logged by hand, which is the common case.
     octivExerciseId:
       typeof data.octivExerciseId === "string" ? data.octivExerciseId : null,
@@ -56,7 +61,15 @@ function readQuery(q: Query<DocumentData>) {
   );
 }
 
-/** All workouts logged on one calendar day, most recently entered first. */
+/**
+ * All workouts logged on one calendar day, in the order they should be read.
+ *
+ * The query still orders by `createdAt` — newest first, and the only ordering
+ * Firestore can do here without a second composite index — and the day's own
+ * arrangement is applied on top of it in memory. A day holds a handful of
+ * sessions, so sorting them locally costs nothing and keeps the stored `order`
+ * optional: a document written before this existed needs no backfill.
+ */
 export async function fetchWorkoutsByDate(
   uid: string,
   dateKey: string,
@@ -68,7 +81,37 @@ export async function fetchWorkoutsByDate(
       orderBy("createdAt", "desc"),
     ),
   );
-  return snapshot.docs.map(toWorkout);
+  return sortDayOrder(snapshot.docs.map(toWorkout));
+}
+
+/**
+ * Writes the day's arrangement — one position per session, in one batch.
+ *
+ * A batch rather than a loop of updates, because a half-applied reorder is a day
+ * with two sessions claiming the same position. Firestore applies the whole batch
+ * to the local cache atomically and flushes it as a unit when the connection
+ * returns, so this behaves the same offline.
+ *
+ * Only `order` is touched, so nothing here can disturb a score or a title.
+ */
+export async function setDayOrder(
+  uid: string,
+  dateKey: string,
+  /** Every workout on that day, in the order it should appear. */
+  workoutIds: readonly string[],
+): Promise<WriteResult> {
+  const batch = writeBatch(getDb());
+
+  for (const { id, order } of assignOrder(workoutIds)) {
+    batch.update(workoutDoc(uid, id), { order });
+  }
+
+  const outcome = await acceptWrite(
+    `reorder ${workoutIds.length} sessions on ${dateKey}`,
+    batch.commit(),
+  );
+
+  return { id: dateKey, queued: !outcome.acked };
 }
 
 /**

@@ -1,4 +1,10 @@
-import { SHARE_FORMATS, type ShareCard, type ShareFormat } from "./share-card";
+import {
+  SHARE_FORMATS,
+  type DayShareCard,
+  type ResultShareCard,
+  type ShareCard,
+  type ShareFormat,
+} from "./share-card";
 import { APP_URL_DISPLAY } from "./share";
 
 /**
@@ -48,6 +54,21 @@ interface Layout {
   footerSize: number;
   /** Space between the stacked blocks of the composition. */
   gap: number;
+  /** Sizes used only by the day poster, whose body is a list rather than a number. */
+  day: DayLayout;
+}
+
+interface DayLayout {
+  /** A day's title is a date — longer than "Fran", so it starts smaller. */
+  titleMax: number;
+  titleMin: number;
+  /** Height of one session row, before it is fitted to the space available. */
+  rowMax: number;
+  rowMin: number;
+  entryTitle: number;
+  entryDetail: number;
+  entryValueMax: number;
+  entryValueMin: number;
 }
 
 /**
@@ -73,6 +94,16 @@ function layoutFor(format: ShareFormat): Layout {
     badgeSize: 26,
     footerSize: 26,
     gap: story ? 56 : 44,
+    day: {
+      titleMax: story ? 100 : 88,
+      titleMin: 52,
+      rowMax: story ? 208 : 170,
+      rowMin: 118,
+      entryTitle: story ? 44 : 40,
+      entryDetail: 26,
+      entryValueMax: story ? 78 : 70,
+      entryValueMin: 34,
+    },
   };
 }
 
@@ -347,6 +378,28 @@ function paintLockup(
   return y + 32 * scale;
 }
 
+/**
+ * Truncates to fit, with an ellipsis, measured at the font currently set.
+ *
+ * Used on a day card's session rows, where the score has first claim on the width
+ * and the title takes what is left. `fitText` is the wrong tool there: shrinking
+ * one row's title to fit would leave it a different size from its neighbours,
+ * and a list of five different type sizes reads as a mistake.
+ */
+function ellipsize(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  maxWidth: number,
+): string {
+  if (ctx.measureText(text).width <= maxWidth) return text;
+
+  let cut = text;
+  while (cut.length > 1 && ctx.measureText(`${cut}…`).width > maxWidth) {
+    cut = cut.slice(0, -1);
+  }
+  return `${cut.trimEnd()}…`;
+}
+
 /** Draws text with manual letter-spacing, returning the width consumed. */
 function drawTracked(
   ctx: CanvasRenderingContext2D,
@@ -428,10 +481,12 @@ export async function renderShareCard(
   const bodyFamily = fontStack("--font-inter", "system-ui, sans-serif");
   await ensureFonts(displayFamily, bodyFamily);
 
-  const displayFont = (size: number) => `800 ${size}px ${displayFamily}`;
-  const displayBold = (size: number) => `700 ${size}px ${displayFamily}`;
-  const bodyFont = (size: number) => `600 ${size}px ${bodyFamily}`;
-  const bodyRegular = (size: number) => `400 ${size}px ${bodyFamily}`;
+  const fonts: Fonts = {
+    display: (size) => `800 ${size}px ${displayFamily}`,
+    displayBold: (size) => `700 ${size}px ${displayFamily}`,
+    body: (size) => `600 ${size}px ${bodyFamily}`,
+    bodyRegular: (size) => `400 ${size}px ${bodyFamily}`,
+  };
 
   const canvas = document.createElement("canvas");
   canvas.width = width;
@@ -446,23 +501,60 @@ export async function renderShareCard(
   paintGrid(ctx, width, height, l.gridSize);
   paintGlow(ctx, width, height);
 
-  const contentWidth = width - l.padding * 2;
+  const frame = paintChrome(ctx, card, width, height, l, fonts);
+
+  // The two posters share everything above and below, and nothing in between: a
+  // result hangs one enormous number off the bottom edge, a day fills the middle
+  // with a list. Trying to express both as one parameterised composition was
+  // worse than two functions that each do one thing.
+  if (card.kind === "day") {
+    paintDayBody(ctx, card, frame, l, fonts);
+  } else {
+    paintResultBody(ctx, card, frame, l, fonts);
+  }
+
+  return toBlob(canvas);
+}
+
+/** The four faces a body painter draws with. */
+interface Fonts {
+  display: (size: number) => string;
+  displayBold: (size: number) => string;
+  body: (size: number) => string;
+  bodyRegular: (size: number) => string;
+}
+
+/** The room left for a card's body once the brand and the footer have taken theirs. */
+interface Frame {
+  width: number;
+  left: number;
+  contentWidth: number;
+  /** Nothing may be drawn above this line — the lockup owns everything higher. */
+  contentTop: number;
+  /** The footer's baseline. A body stays clear of it. */
+  footerBaseline: number;
+}
+
+/**
+ * The parts every card has: the lockup at the top, the date and the app address
+ * at the bottom. Returns the space that is left.
+ */
+function paintChrome(
+  ctx: CanvasRenderingContext2D,
+  card: ShareCard,
+  width: number,
+  height: number,
+  l: Layout,
+  fonts: Fonts,
+): Frame {
   const left = l.padding;
+  const contentWidth = width - l.padding * 2;
 
-  // --- Header ---
-  const headerBottom = paintLockup(ctx, left, l.headerTop, displayFont);
-  // Nothing below may cross this line. The composition is built from the bottom
-  // up, so without a stated ceiling a long WOD simply pushes the title off the
-  // top of the canvas — see the description budget below.
-  const contentTop = headerBottom + l.gap;
+  const headerBottom = paintLockup(ctx, left, l.headerTop, fonts.display);
 
-  // --- Bottom-anchored blocks ------------------------------------------
-  // The composition hangs off the bottom edge: the score is the thing the eye
-  // should land on, and anchoring it to a fixed distance from the bottom keeps
-  // it in the same place whether the title took one line or two.
   const footerBaseline = height - l.padding;
 
-  ctx.font = bodyFont(l.footerSize);
+  ctx.font = fonts.body(l.footerSize);
   ctx.textBaseline = "alphabetic";
   ctx.fillStyle = COLOR.muted;
   if (card.dateLabel) {
@@ -478,7 +570,41 @@ export async function renderShareCard(
   ctx.fillText(APP_URL_DISPLAY, width - l.padding, footerBaseline);
   ctx.textAlign = "left";
 
+  return {
+    width,
+    left,
+    contentWidth,
+    // Nothing below may cross this line. A result's composition is built from the
+    // bottom up, so without a stated ceiling a long WOD simply pushes the title
+    // off the top of the canvas — see the description budget in paintResultBody.
+    contentTop: headerBottom + l.gap,
+    footerBaseline,
+  };
+}
+
+/**
+ * One result: the score is the poster, and everything else is stacked upward
+ * from it.
+ */
+function paintResultBody(
+  ctx: CanvasRenderingContext2D,
+  card: ResultShareCard,
+  frame: Frame,
+  l: Layout,
+  fonts: Fonts,
+): void {
+  const { width, left, contentWidth, contentTop, footerBaseline } = frame;
+  const {
+    display: displayFont,
+    displayBold,
+    body: bodyFont,
+    bodyRegular,
+  } = fonts;
+
   // --- Score ---
+  // The composition hangs off the bottom edge: the score is the thing the eye
+  // should land on, and anchoring it to a fixed distance from the bottom keeps
+  // it in the same place whether the title took one line or two.
   const scoreBottom = footerBaseline - l.footerSize - l.gap;
 
   // One line, always. "8 rnds + 12 reps" broken across two lines reads as two
@@ -631,8 +757,185 @@ export async function renderShareCard(
     titleTop - 26,
     l.eyebrowSize * 0.22,
   );
+}
 
-  return toBlob(canvas);
+/**
+ * A whole training day: the sessions are the content, so this one reads top down.
+ *
+ * The header block is drawn first because its height is knowable — an eyebrow, a
+ * title of at most two lines, one row of pills — and whatever is left between it
+ * and the footer belongs to the list. The rows then split that space evenly,
+ * within bounds: five sessions on a 4:5 post would otherwise give each row 90px
+ * to hold a title, a type and a score, and two sessions on a story would give
+ * each 500px and look like a mistake. Bounded and centred, a two-session day and
+ * a five-session day are recognisably the same poster.
+ */
+function paintDayBody(
+  ctx: CanvasRenderingContext2D,
+  card: DayShareCard,
+  frame: Frame,
+  l: Layout,
+  fonts: Fonts,
+): void {
+  const { left, contentWidth, contentTop, footerBaseline } = frame;
+  const d = l.day;
+
+  // --- Eyebrow ---
+  ctx.font = fonts.displayBold(l.eyebrowSize);
+  ctx.fillStyle = card.highlight ? COLOR.primary : COLOR.muted;
+  ctx.textBaseline = "top";
+  drawTracked(
+    ctx,
+    card.eyebrow.toUpperCase(),
+    left,
+    contentTop,
+    l.eyebrowSize * 0.22,
+  );
+
+  let cursor = contentTop + l.eyebrowSize + 24;
+
+  // --- Title ---
+  const title = fitText(
+    ctx,
+    card.title,
+    fonts.display,
+    contentWidth,
+    2,
+    d.titleMax,
+    d.titleMin,
+  );
+  const titleLineHeight = title.size * 1.05;
+
+  ctx.font = fonts.display(title.size);
+  ctx.fillStyle = COLOR.foreground;
+  ctx.textBaseline = "top";
+  title.lines.forEach((line, index) => {
+    ctx.fillText(line, left, cursor + index * titleLineHeight);
+  });
+  cursor += titleLineHeight * title.lines.length + l.gap * 0.5;
+
+  // --- Badges: how many sessions, and how many were records ---
+  if (card.badges.length > 0) {
+    let badgeX = left;
+    for (const badge of card.badges) {
+      const consumed = paintBadge(
+        ctx,
+        badge,
+        badgeX,
+        cursor,
+        l.badgeSize,
+        fonts.body,
+      );
+      badgeX += consumed + 14;
+      if (badgeX > frame.width - l.padding - 120) break;
+    }
+    cursor += l.badgeSize + 26 + l.gap * 0.6;
+  }
+
+  if (card.entries.length === 0) return;
+
+  // --- The sessions ---
+  const overflowHeight =
+    card.hiddenCount > 0 ? l.badgeSize + 24 + l.gap * 0.5 : 0;
+  const listBottom = footerBaseline - l.footerSize - l.gap - overflowHeight;
+  const available = Math.max(0, listBottom - cursor);
+
+  const rowHeight = Math.max(
+    d.rowMin,
+    Math.min(d.rowMax, available / card.entries.length),
+  );
+  const listHeight = rowHeight * card.entries.length;
+  // Centred in what is left, so the block does not hang off the header on a day
+  // with two sessions or crowd the footer on a day with five.
+  const listTop = cursor + Math.max(0, (available - listHeight) / 2);
+
+  card.entries.forEach((entry, index) => {
+    const rowTop = listTop + index * rowHeight;
+
+    // A hairline between rows, not around them: the rows are one list, and a box
+    // per session would turn the poster into a table.
+    if (index > 0) {
+      ctx.save();
+      ctx.globalAlpha = 0.8;
+      ctx.strokeStyle = COLOR.border;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(left, rowTop + 0.5);
+      ctx.lineTo(left + contentWidth, rowTop + 0.5);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // The score has first claim on the width — it is the part somebody reads —
+    // and the title takes what is left over.
+    const value = fitText(
+      ctx,
+      entry.value,
+      fonts.display,
+      contentWidth * 0.46,
+      1,
+      d.entryValueMax,
+      d.entryValueMin,
+    );
+    const valueText = value.lines[0] ?? entry.value;
+    const valueWidth = ctx.measureText(valueText).width;
+
+    const textWidth = Math.max(120, contentWidth - valueWidth - 36);
+    const titleHeight = d.entryTitle * 1.1;
+    const detailHeight = entry.detail ? d.entryDetail * 1.35 : 0;
+    const textTop = rowTop + (rowHeight - titleHeight - detailHeight) / 2;
+
+    ctx.font = fonts.body(d.entryTitle);
+    ctx.fillStyle = COLOR.foreground;
+    ctx.textBaseline = "top";
+    ctx.fillText(ellipsize(ctx, entry.title, textWidth), left, textTop);
+
+    if (entry.detail) {
+      ctx.font = fonts.bodyRegular(d.entryDetail);
+      ctx.fillStyle = COLOR.muted;
+      ctx.fillText(
+        ellipsize(ctx, entry.detail, textWidth),
+        left,
+        textTop + titleHeight,
+      );
+    }
+
+    ctx.font = fonts.display(value.size);
+    if (entry.highlight) {
+      const gradient = ctx.createLinearGradient(
+        left + contentWidth - valueWidth,
+        rowTop,
+        left + contentWidth,
+        rowTop + rowHeight,
+      );
+      gradient.addColorStop(0, COLOR.primary);
+      gradient.addColorStop(1, COLOR.accent);
+      ctx.fillStyle = gradient;
+    } else {
+      ctx.fillStyle = COLOR.foreground;
+    }
+    ctx.textAlign = "right";
+    ctx.fillText(
+      valueText,
+      left + contentWidth,
+      rowTop + (rowHeight - value.size * 1.02) / 2,
+    );
+    ctx.textAlign = "left";
+  });
+
+  // --- What did not fit ---
+  if (card.hiddenCount > 0) {
+    ctx.font = fonts.body(l.badgeSize);
+    ctx.fillStyle = COLOR.muted;
+    ctx.textBaseline = "top";
+    drawTracked(
+      ctx,
+      `+${card.hiddenCount} MORE ${card.hiddenCount === 1 ? "SESSION" : "SESSIONS"}`,
+      left,
+      listTop + listHeight + l.gap * 0.4,
+      l.badgeSize * 0.14,
+    );
+  }
 }
 
 function toBlob(canvas: HTMLCanvasElement): Promise<Blob> {
