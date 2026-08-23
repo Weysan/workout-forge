@@ -117,7 +117,16 @@ export function BenchmarkPicker({
                     <CommandItem
                       key={benchmark.id}
                       value={benchmark.name}
-                      keywords={[benchmark.category, benchmark.type, benchmark.id]}
+                      keywords={[
+                        benchmark.category,
+                        benchmark.type,
+                        benchmark.id,
+                        // Lets "2024" or "2024 open" find a season workout: the
+                        // year is on the entry but never in its name.
+                        ...(benchmark.season === undefined
+                          ? []
+                          : [String(benchmark.season)]),
+                      ]}
                       onSelect={() => {
                         onSelect(benchmark);
                         setOpen(false);

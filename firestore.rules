@@ -112,7 +112,7 @@ service cloud.firestore {
         allow create, update: if isOwner(uid)
           && request.resource.data.movementId == movementId
           && isNonEmptyString(request.resource.data.name, 120)
-          && request.resource.data.category in ['Lift', 'Benchmark', 'Hero', 'Run']
+          && request.resource.data.category in ['Lift', 'Benchmark', 'Hero', 'Run', 'Open', 'Games']
           && request.resource.data.bestValue is number
           && request.resource.data.bestValue >= 0;
       }

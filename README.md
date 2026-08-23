@@ -674,6 +674,13 @@ domain in front, with no trailing slash.
 - **Benchmark ids in `seedData.ts` are permanent.** A workout references one via
   `linkedBenchmarkId`, and a PR document's id *is* the benchmark id, so renaming
   an id orphans existing user data.
+- **A season workout is a benchmark with a `season` on it.** The `Open` and
+  `Games` categories are ordinary categories everywhere except the performance
+  page, which folds them behind one Season tab and browses them by year rather
+  than giving each its own tab — five years of near-identical names do not scan
+  as a flat list. `SEASONS` is derived from the library, so next February's Open
+  is three entries in `seedData.ts` and nothing else. Note that a new *category*
+  is not free: `firestore.rules` pins the set a PR document may carry.
 - **Dates are `YYYY-MM-DD` strings in the browser's timezone**, derived from
   local date parts, never `toISOString()` — see `toDateKey` in `src/lib/utils.ts`.
   A workout logged at 9pm in New York belongs to that day, not tomorrow.

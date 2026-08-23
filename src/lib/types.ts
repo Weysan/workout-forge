@@ -20,7 +20,13 @@ export type ScoreType =
 
 export type RxOrScaled = "RX" | "Scaled";
 
-export type BenchmarkCategory = "Lift" | "Benchmark" | "Hero" | "Run";
+export type BenchmarkCategory =
+  | "Lift"
+  | "Benchmark"
+  | "Hero"
+  | "Run"
+  | "Open"
+  | "Games";
 
 /**
  * A connected Octiv account, stored on the user document.
@@ -169,4 +175,12 @@ export interface Benchmark {
   type: WorkoutType;
   scoreType: ScoreType;
   description: string;
+  /**
+   * The CrossFit season this workout belongs to, for the `Open` and `Games`
+   * categories — the calendar year the Open was run in, which is also the year
+   * of the Games it fed into.
+   *
+   * Absent on every other category: a back squat belongs to no season.
+   */
+  season?: number;
 }

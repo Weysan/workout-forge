@@ -105,6 +105,14 @@ export function PrDetailSheet({
           <div className="flex items-center gap-2">
             <Badge variant="outline">{benchmark.category}</Badge>
             <Badge variant="outline">{benchmark.type}</Badge>
+            {/* Open and Games entries carry a season; nothing else does. It is
+                the one thing the name alone does not say — "Helena" and "24.1"
+                both need the year to be placed. */}
+            {benchmark.season !== undefined && (
+              <Badge variant="outline" className="tabular">
+                {benchmark.season}
+              </Badge>
+            )}
           </div>
           <SheetTitle>{benchmark.name}</SheetTitle>
           <SheetDescription className="whitespace-pre-line">
