@@ -33,6 +33,7 @@ import { workoutTypeLabel } from "@/constants/seedData";
 import { DateStrip } from "@/components/date-strip";
 import { DayStatusBar } from "@/components/day-status-bar";
 import { OctivWodPanel } from "@/components/octiv-wod-panel";
+import { StravaActivityPanel } from "@/components/strava-activity-panel";
 import { ReorderSheet } from "@/components/reorder-sheet";
 import { ShareSheet } from "@/components/share-sheet";
 import { EmptyDay, WorkoutCard } from "@/components/workout-card";
@@ -235,6 +236,11 @@ function Log() {
             programmed. Renders nothing unless Octiv is connected and has a WOD
             for this day that is not in the log yet. */}
         <OctivWodPanel dateKey={dateKey} workouts={workouts} />
+
+        {/* Last: a watch's record of what happened outside the box. Same
+            contract as the panel above — nothing at all unless there is
+            something to import. */}
+        <StravaActivityPanel dateKey={dateKey} workouts={workouts} />
       </section>
 
       {/* Both panels stay mounted while they animate out, the same arrangement as

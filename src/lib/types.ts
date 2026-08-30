@@ -9,6 +9,18 @@ export type WorkoutType =
   | "ForTime"
   | "Strength"
   | "Hyrox"
+  /**
+   * Running, rowing, riding — a session measured by covering ground.
+   *
+   * Distinct from `ForTime`, which means a workout done against the clock for a
+   * result. A long easy run is timed without being a time trial, and putting the
+   * two under one badge would file it beside benchmark efforts it has nothing to
+   * do with.
+   *
+   * Any change here must be made in `firestore.rules` and in
+   * `WORKOUT_TYPE_OPTIONS` at the same time, or the rules reject the write.
+   */
+  | "Run"
   | "Custom";
 
 export type ScoreType =
@@ -46,6 +58,56 @@ export interface OctivConnection {
   username: string;
 }
 
+/**
+ * A connected Strava account, stored on the user document beside `octiv`.
+ *
+ * Deliberately a sibling field rather than a generalised `integrations` map: two
+ * integrations is not enough to justify a migration, and the security rules pin
+ * each one's shape separately anyway.
+ *
+ * Unlike Octiv's year-long token, a Strava access token lasts six hours, so
+ * `refreshToken` — not `accessToken` — is what actually keeps this connection
+ * alive. Strava invalidates the old refresh token the moment it issues a new one,
+ * which is why `lib/strava/client.ts` serialises refreshes and persists the new
+ * one before using the access token that came with it.
+ */
+export interface StravaConnection {
+  /** Six-hour lifetime. Expected to be stale most of the time. */
+  accessToken: string;
+  /** Long-lived, and rotated on some refreshes. The real credential. */
+  refreshToken: string;
+  /** ISO instant, converted from Strava's `expires_at` epoch seconds. */
+  expiresAt: string;
+  athleteId: number;
+  /** Shown as "connected as" — Strava's username, or a first/last name. */
+  username: string;
+  /**
+   * What the user actually granted, as Strava echoed it back.
+   *
+   * Stored because the consent screen lets them untick scopes: asking for
+   * `activity:read_all` is no guarantee of getting it, and an athlete who
+   * granted only `activity:read` will silently not see their private activities.
+   */
+  scope: string;
+  /**
+   * When Strava stopped accepting this connection, if it has.
+   *
+   * Octiv can express the same state through `expiresAt`, because its tokens last
+   * a year and an early expiry is unambiguous. Strava cannot: its access tokens
+   * are *meant* to be stale most of the time, and a stale one is self-healing, so
+   * expiry says nothing about whether the connection still works.
+   *
+   * What does end a Strava connection is the refresh being refused — the athlete
+   * revoked access in their Strava settings, or the refresh token rotated out from
+   * under a device that was offline while another one refreshed. That is recorded
+   * here so the card can say "connect again" instead of showing a green tick over
+   * something dead, and so the day panels stop asking.
+   *
+   * Absent on every healthy connection.
+   */
+  revokedAt?: string | null;
+}
+
 /** `users/{uid}` */
 export interface UserProfile {
   uid: string;
@@ -56,6 +118,8 @@ export interface UserProfile {
   unitSystem: UnitSystem;
   /** Absent or null when no Octiv account is connected. */
   octiv?: OctivConnection | null;
+  /** Absent or null when no Strava account is connected. */
+  strava?: StravaConnection | null;
   createdAt: Timestamp | null;
 }
 
@@ -116,6 +180,19 @@ export interface Workout {
    * deleting an imported card offers that piece again rather than losing it.
    */
   octivExerciseId?: string | null;
+  /**
+   * The Strava activity id this session was imported from. Absent on everything
+   * logged by hand, and on everything that came from Octiv.
+   *
+   * Exactly the same role as `octivExerciseId`: it lets the day's Strava panel
+   * tell what has already been imported without a second query, and means
+   * deleting an imported card offers that activity again rather than losing it.
+   *
+   * A string rather than the number Strava sends, because Strava ids exceed
+   * `Number.MAX_SAFE_INTEGER` — they are already past 2^53 — so they cannot
+   * survive a round trip through JSON as numbers.
+   */
+  stravaActivityId?: string | null;
   notes: string;
   createdAt: Timestamp | null;
 }

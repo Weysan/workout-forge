@@ -19,5 +19,8 @@
     }
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
-  "exclude": ["node_modules"]
+  // `worker/` is a separate Cloudflare Workers project with its own tsconfig and
+  // its own globals (@cloudflare/workers-types). Compiling it against the app's
+  // DOM lib would fail on names that exist only in the Workers runtime.
+  "exclude": ["node_modules", "worker", "out"]
 }

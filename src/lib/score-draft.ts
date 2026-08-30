@@ -1,4 +1,12 @@
-import { encodeRoundsReps, formatScore, fromTotalSeconds, toTotalSeconds } from "./scoring";
+import {
+  decodeCappedReps,
+  encodeCappedReps,
+  encodeRoundsReps,
+  formatScore,
+  fromTotalSeconds,
+  isTimeCapped,
+  toTotalSeconds,
+} from "./scoring";
 import { toDisplayWeight, toStoredWeight } from "./units";
 import type { ScoreType, UnitSystem, Workout } from "./types";
 
@@ -14,6 +22,16 @@ export interface ScoreDraft {
   /** time_seconds — minutes is intentionally unbounded, so Murph is 72:14. */
   minutes: string;
   seconds: string;
+  /**
+   * time_seconds — the athlete hit the time cap without finishing, and scores
+   * the reps they completed instead of a time. See `encodeCappedReps`.
+   *
+   * A mode rather than a third field, because the two are alternatives: a result
+   * is a finish time or a cap-out, never both. The time fields are kept while
+   * this is on, so toggling it by mistake does not discard what was typed.
+   */
+  timeCapped: boolean;
+  cappedReps: string;
   /** rounds_reps */
   rounds: string;
   partialReps: string;
@@ -31,6 +49,8 @@ export function emptyDraft(unitSystem: UnitSystem): ScoreDraft {
   return {
     minutes: "",
     seconds: "",
+    timeCapped: false,
+    cappedReps: "",
     rounds: "",
     partialReps: "",
     totalReps: "",
@@ -53,6 +73,11 @@ export function draftFromWorkout(
 
   switch (workout.scoreType) {
     case "time_seconds": {
+      if (isTimeCapped(workout.scoreValue)) {
+        draft.timeCapped = true;
+        draft.cappedReps = String(decodeCappedReps(workout.scoreValue));
+        break;
+      }
       const { hours, minutes, seconds } = fromTotalSeconds(workout.scoreValue);
       // Hours are folded back into minutes: the form has no hours field.
       draft.minutes = String(hours * 60 + minutes);
@@ -119,7 +144,9 @@ export function resolveScore(
 
   switch (scoreType) {
     case "time_seconds": {
-      const scoreValue = toTotalSeconds(0, num(draft.minutes), num(draft.seconds));
+      const scoreValue = draft.timeCapped
+        ? encodeCappedReps(num(draft.cappedReps))
+        : toTotalSeconds(0, num(draft.minutes), num(draft.seconds));
       return {
         scoreValue,
         scoreDisplay: formatScore("time_seconds", scoreValue, unitSystem),
@@ -177,7 +204,11 @@ export function isScoreComplete(
 ): boolean {
   switch (scoreType) {
     case "time_seconds":
-      return num(draft.minutes) > 0 || num(draft.seconds) > 0;
+      // A cap-out is scored by its reps, so the time fields say nothing about
+      // whether it is filled in — and vice versa.
+      return draft.timeCapped
+        ? num(draft.cappedReps) > 0
+        : num(draft.minutes) > 0 || num(draft.seconds) > 0;
     case "rounds_reps":
       return num(draft.rounds) > 0 || num(draft.partialReps) > 0;
     case "reps":

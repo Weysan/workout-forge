@@ -39,31 +39,70 @@ export function ScoreInput({
     case "time_seconds":
       return (
         <Field label="Time">
-          <div className="flex items-end gap-2">
-            <NumberBox
-              id={id("minutes")}
-              label="Min"
-              value={draft.minutes}
-              onValueChange={(minutes) => onChange({ minutes })}
-              max={999}
-              placeholder="0"
-            />
-            <span className="font-display pb-3 text-2xl font-bold text-muted-foreground">
-              :
-            </span>
-            <NumberBox
-              id={id("seconds")}
-              label="Sec"
-              value={draft.seconds}
-              onValueChange={(seconds) => onChange({ seconds })}
-              max={59}
-              placeholder="00"
-            />
-          </div>
-          <Hint>
-            Minutes can go past 60 — a 72:14 Murph is fine, it displays as
-            1:12:14.
-          </Hint>
+          {/* Most "for time" workouts carry a cap, and reaching it unfinished is
+              a reps score rather than a slow time. The two are alternatives, so
+              this picks between them rather than offering both at once. */}
+          <ToggleGroup
+            type="single"
+            value={draft.timeCapped ? "capped" : "finished"}
+            onValueChange={(value) => {
+              if (!value) return;
+              onChange({ timeCapped: value === "capped" });
+            }}
+            className="w-full"
+          >
+            <ToggleGroupItem value="finished" className="flex-1">
+              Finished
+            </ToggleGroupItem>
+            <ToggleGroupItem value="capped" className="flex-1">
+              Hit the cap
+            </ToggleGroupItem>
+          </ToggleGroup>
+
+          {draft.timeCapped ? (
+            <>
+              <NumberBox
+                id={id("cappedReps")}
+                label="Reps completed"
+                value={draft.cappedReps}
+                onValueChange={(cappedReps) => onChange({ cappedReps })}
+                max={9999}
+                placeholder="0"
+              />
+              <Hint>
+                Scored on reps, and ranked behind every finishing time — which is
+                how the Open counts it.
+              </Hint>
+            </>
+          ) : (
+            <>
+              <div className="flex items-end gap-2">
+                <NumberBox
+                  id={id("minutes")}
+                  label="Min"
+                  value={draft.minutes}
+                  onValueChange={(minutes) => onChange({ minutes })}
+                  max={999}
+                  placeholder="0"
+                />
+                <span className="font-display pb-3 text-2xl font-bold text-muted-foreground">
+                  :
+                </span>
+                <NumberBox
+                  id={id("seconds")}
+                  label="Sec"
+                  value={draft.seconds}
+                  onValueChange={(seconds) => onChange({ seconds })}
+                  max={59}
+                  placeholder="00"
+                />
+              </div>
+              <Hint>
+                Minutes can go past 60 — a 72:14 Murph is fine, it displays as
+                1:12:14.
+              </Hint>
+            </>
+          )}
         </Field>
       );
 

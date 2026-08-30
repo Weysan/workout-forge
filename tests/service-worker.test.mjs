@@ -73,6 +73,10 @@ describe("precache manifest", () => {
       "/profile",
       "/workout/new",
       "/workout/edit",
+      // Where Strava returns the athlete after the consent screen. Precached
+      // like /workout/edit?id= — the shell is what is cached, and it reads its
+      // own query parameters at runtime.
+      "/strava/callback",
       "/offline",
     ]) {
       assert.ok(cachedKeys.has(route), `${route} is not precached`);

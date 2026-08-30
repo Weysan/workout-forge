@@ -15,6 +15,7 @@ import { acceptWrite, isOnline, readWithCacheFallback } from "@/lib/offline";
 import type {
   Gender,
   OctivConnection,
+  StravaConnection,
   UnitSystem,
   UserProfile,
 } from "@/lib/types";
@@ -43,6 +44,37 @@ function toOctivConnection(value: unknown): OctivConnection | null {
   };
 }
 
+/**
+ * The stored Strava connection, or `null` if it is not there or not usable.
+ *
+ * Stricter than its Octiv counterpart in one place: a connection without a
+ * refresh token is treated as absent. Strava access tokens last six hours, so
+ * such a record is dead within the day and there is nothing that can renew it —
+ * reading it as "connected" would show a green tick over a connection that
+ * cannot be repaired except by connecting again.
+ */
+function toStravaConnection(value: unknown): StravaConnection | null {
+  if (!value || typeof value !== "object") return null;
+
+  const raw = value as Record<string, unknown>;
+  if (typeof raw.accessToken !== "string" || raw.accessToken.length === 0) {
+    return null;
+  }
+  if (typeof raw.refreshToken !== "string" || raw.refreshToken.length === 0) {
+    return null;
+  }
+
+  return {
+    accessToken: raw.accessToken,
+    refreshToken: raw.refreshToken,
+    expiresAt: typeof raw.expiresAt === "string" ? raw.expiresAt : "",
+    athleteId: typeof raw.athleteId === "number" ? raw.athleteId : 0,
+    username: typeof raw.username === "string" ? raw.username : "",
+    scope: typeof raw.scope === "string" ? raw.scope : "",
+    revokedAt: typeof raw.revokedAt === "string" ? raw.revokedAt : null,
+  };
+}
+
 export async function fetchProfile(uid: string): Promise<UserProfile | null> {
   const ref = userDoc(uid);
 
@@ -65,6 +97,7 @@ export async function fetchProfile(uid: string): Promise<UserProfile | null> {
     gender: (data.gender as Gender) ?? "non_binary",
     unitSystem: (data.unitSystem as UnitSystem) ?? "metric",
     octiv: toOctivConnection(data.octiv),
+    strava: toStravaConnection(data.strava),
     createdAt: data.createdAt ?? null,
   };
 }
@@ -149,6 +182,86 @@ export async function clearOctivConnection(uid: string): Promise<void> {
   await acceptWrite(
     "disconnect octiv",
     updateDoc(userDoc(uid), { octiv: deleteField() }),
+  );
+}
+
+/**
+ * Store the Strava connection on the user document.
+ *
+ * Same reasoning as `setOctivConnection`: the user document is the one place only
+ * its owner can read, and keeping the connection there rather than on the device
+ * means it follows the athlete to their phone. It also rescues the one awkward
+ * case in the OAuth flow — an installed PWA that hands the authorize step to
+ * Safari finishes the connection *there*, and this is what makes the PWA pick it
+ * up on its next profile read.
+ */
+export async function setStravaConnection(
+  uid: string,
+  connection: StravaConnection,
+): Promise<void> {
+  await acceptWrite(
+    "connect strava",
+    updateDoc(userDoc(uid), { strava: connection }),
+  );
+}
+
+/**
+ * Persist rotated tokens, keeping the athlete's identity from the original
+ * connection.
+ *
+ * Split out from `setStravaConnection` because a refresh response carries no
+ * athlete: Strava sends that only on the first exchange. Writing a whole
+ * connection built from a refresh would blank `athleteId`, `username` and
+ * `scope`.
+ *
+ * Called on the way *in* to using a freshly refreshed token, never after: Strava
+ * invalidates the previous refresh token as soon as it issues a new one, so a
+ * token that is used before it is stored is a token that can be lost to a
+ * reload.
+ */
+export async function updateStravaTokens(
+  uid: string,
+  connection: StravaConnection,
+  tokens: { accessToken: string; refreshToken: string; expiresAt: string },
+): Promise<StravaConnection> {
+  const next: StravaConnection = { ...connection, ...tokens, revokedAt: null };
+
+  await acceptWrite("refresh strava", updateDoc(userDoc(uid), { strava: next }));
+
+  return next;
+}
+
+/**
+ * Record that Strava has refused to renew this connection, and return what was
+ * written.
+ *
+ * The Strava counterpart of `expireOctivConnection`, and deliberately not
+ * `clearStravaConnection` for the same reason: deleting the field would take the
+ * athlete's name with it and read as the app forgetting the integration, when what
+ * actually happened is that it needs connecting again.
+ */
+export async function markStravaRevoked(
+  uid: string,
+  connection: StravaConnection,
+): Promise<StravaConnection> {
+  const revoked: StravaConnection = {
+    ...connection,
+    revokedAt: new Date().toISOString(),
+  };
+
+  await acceptWrite(
+    "revoke strava",
+    updateDoc(userDoc(uid), { strava: revoked }),
+  );
+
+  return revoked;
+}
+
+/** Remove the field outright — an emptied object would still read as connected. */
+export async function clearStravaConnection(uid: string): Promise<void> {
+  await acceptWrite(
+    "disconnect strava",
+    updateDoc(userDoc(uid), { strava: deleteField() }),
   );
 }
 

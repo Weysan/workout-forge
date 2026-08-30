@@ -109,7 +109,14 @@ app like this never happen here:
 
 ### Integrations
 
-Optional, and only one so far. Connecting an Octiv account from
+Both optional, and independent of each other. They point in opposite directions:
+Octiv brings in the programming the box has *planned*, unscored, for you to fill
+in; Strava brings in the sessions you have *already done*, with their results
+attached.
+
+#### Octiv
+
+Connecting an Octiv account from
 Profile → Integrations stores its bearer token as an `octiv` map on the user
 document — the one place only its owner can read (see `firestore.rules`) and the
 one that follows the athlete to their other devices. The password is used once,
@@ -144,6 +151,61 @@ finished day that answer still changes — a coach posting the evening session a
 lunchtime would otherwise stay invisible until tomorrow. Disconnecting the account
 clears the cache with it.
 
+#### Strava
+
+The same shape — a connection on the user document, a quiet panel on the day, an
+import that produces ordinary workouts traced only by `stravaActivityId` — with
+three differences that are worth knowing about.
+
+**It needs a server, and this app has none.** Strava does not support PKCE, so
+`client_secret` is required both to exchange the authorization code and to refresh
+an access token. In a static export a secret in the client is a secret in the
+bundle, so those two calls — and only those two — go through a ~40-line Cloudflare
+Worker in [`worker/`](worker/README.md), which holds the secret and nothing else.
+Free tier, no Firebase changes, no Blaze plan. The *activity reads* still go
+straight from the browser to `www.strava.com/api/v3`, which works for exactly the
+reason the Octiv integration needs no server at all: Strava sends
+`access-control-allow-origin: *`.
+
+**Tokens last six hours, not a year.** So refreshing is the normal path rather
+than an exception, and two details follow from it. The card shows no expiry — a
+stale access token is the usual state and renews itself, so a countdown would be
+alarming and meaningless; the only thing worth reporting is a connection Strava has
+stopped accepting, which is recorded as `revokedAt`. And because Strava invalidates
+a refresh token as soon as it issues a new one, `src/lib/strava/client.ts`
+serialises refreshes behind a single in-flight promise and remembers which token it
+just consumed. Without that, a day view mounting several panels at once would race
+itself into a connection that no longer works.
+
+**A session's date is a matter of record.** Strava filters its activity query on
+UTC, but an activity belongs to the day the athlete trained by, so the request
+window is widened by a day in each direction and the results are bucketed on
+`start_date_local` — see `dayKeyOf` in `src/lib/strava/mapping.ts`. Parsing that
+field as a date would be wrong: Strava ends it in a `Z` it does not mean.
+
+Two judgement calls in the mapping, both erring the same way:
+
+- **Gym activities are not imported** — `WeightTraining`, `Crossfit`, `Workout`,
+  and the rest. Anyone running both integrations who also records class in Strava
+  would otherwise get the same session twice, and Octiv describes it far better.
+  The allowed sport types are a list of what is in rather than what is out, so a
+  kind Strava adds tomorrow arrives as "not imported" rather than as a mystery card.
+- **Only a race can claim a personal record.** An imported run auto-links to a
+  benchmark (`run_5k`, `half_marathon`, …) only if the athlete flagged it as a race
+  in Strava *and* its distance is within 1.5% of that standard. Everything else
+  imports unlinked, to be attached in one tap from the edit form if it deserves it.
+  The asymmetry is the point: linking wrongly writes a Sunday jog into the record
+  table as a 5 km best and it survives until someone notices, while not linking is
+  a visible, trivial fix. It also means the `workout_type` flag — which Strava does
+  not actually document — can only ever fail safe.
+
+Activities are cached in `localStorage` like the WOD, keyed per athlete, for half a
+day once a day is over. **Today expires in five minutes**, because an athlete
+finishing a run and opening FORGE to log it is the exact moment this exists for.
+There is a second reason to cache here that Octiv does not have: Strava's rate
+limit is 200 requests per fifteen minutes *for the whole application*, shared by
+everyone using the build.
+
 ### Layout
 
 ```
@@ -170,6 +232,7 @@ src/
     score-draft.ts    form-state model for the dynamic score inputs
     firestore/        data access, one module per collection
     octiv/            the gym's programming: API client + WOD → workout mapping
+    strava/           recorded activities: API client + activity → workout mapping
     hooks/            React Query hooks
   constants/
     seedData.ts       the benchmark library (bundled, never fetched)
@@ -308,10 +371,20 @@ is no test framework to configure.
 | `tests/barbell.test.mjs` | `make test-barbell` | plate loading and warm-up ladders, in integer hundredths |
 | `tests/share-card.test.mjs` | `make test-share` | 35 tests on what lands on a shared image: WOD clamping, badges, day rows, filenames |
 | `tests/day-order.test.mjs` | `make test-day-order` | 23 tests on the order a day's sessions read in: sorting, nudging, renumbering |
-| `tests/octiv.test.mjs` | `make test-octiv` | 14 tests on turning a day of Octiv programming into workouts |
+| `tests/scoring.test.mjs` | `make test-scoring` | 20 tests on score encoding: the for-time cap, its ordering against finish times, and backward compatibility |
+| `tests/octiv.test.mjs` | `make test-octiv` | 18 tests on turning a day of Octiv programming into workouts |
 | `tests/octiv-cache.test.mjs` | `make test-octiv-cache` | 19 tests on the WOD cache: TTLs, parameter indexing, unusable storage |
-| `tests/firestore.rules.test.mjs` | `make test-rules` | 48 tests on the owner boundary and document validation |
-| `tests/service-worker.test.mjs` | `make test-sw` | 15 assertions that the built worker can serve every route offline |
+| `tests/strava.test.mjs` | `make test-strava` | 39 tests on turning Strava activities into workouts: local-day bucketing, sport-type filtering, which runs may claim a record |
+| `tests/strava-cache.test.mjs` | `make test-strava-cache` | 19 tests on the activity cache: TTLs, per-athlete indexing, unusable storage |
+| `tests/strava-client.test.mjs` | `make test-strava-client` | 11 tests on the two ways the Strava client fails quietly: an unconfigured build, and concurrent token refreshes |
+| `tests/firestore.rules.test.mjs` | `make test-rules` | 59 tests on the owner boundary and document validation, both integrations included |
+| `tests/service-worker.test.mjs` | `make test-sw` | 19 assertions that the built worker can serve every route offline |
+
+`tests/strava-client.test.mjs` is the first suite to cover a module with a
+*runtime* import rather than type-only ones, so it registers the small resolver in
+`tests/helpers/ts-resolver.mjs` to let Node load `./cache` the way a bundler would.
+Nothing in the app is written differently for it; the alternative was enabling
+`allowImportingTsExtensions` across the whole codebase.
 
 The rules suite runs against an isolated emulator project, so it is safe to run
 while `make dev` is up — your local workouts are not touched. The service-worker

@@ -32,6 +32,21 @@ service cloud.firestore {
             && data.octiv.get('expiresAt', '') is string);
     }
 
+    // A connected Strava account, or no field at all. Pinned for the same reason
+    // as Octiv above, with one difference that matters: a Strava access token
+    // lasts six hours, so `refreshToken` is the credential that actually keeps
+    // the connection alive and is required rather than optional. A stored
+    // connection without one is unusable — it would expire within the day and
+    // could never be renewed.
+    function isValidStrava(data) {
+      return !data.keys().hasAny(['strava'])
+        || (data.strava is map
+            && isNonEmptyString(data.strava.get('accessToken', ''), 8192)
+            && isNonEmptyString(data.strava.get('refreshToken', ''), 8192)
+            && data.strava.get('expiresAt', '') is string
+            && data.strava.get('athleteId', 0) is int);
+    }
+
     // --- User profile ----------------------------------------------------
     match /users/{uid} {
       allow read: if isOwner(uid);
@@ -41,7 +56,8 @@ service cloud.firestore {
         && isNonEmptyString(request.resource.data.displayName, 60)
         && request.resource.data.gender in ['male', 'female', 'non_binary']
         && request.resource.data.unitSystem in ['metric', 'imperial']
-        && isValidOctiv(request.resource.data);
+        && isValidOctiv(request.resource.data)
+        && isValidStrava(request.resource.data);
 
       allow update: if isOwner(uid)
         // uid is immutable once written.
@@ -49,7 +65,8 @@ service cloud.firestore {
         && isNonEmptyString(request.resource.data.displayName, 60)
         && request.resource.data.gender in ['male', 'female', 'non_binary']
         && request.resource.data.unitSystem in ['metric', 'imperial']
-        && isValidOctiv(request.resource.data);
+        && isValidOctiv(request.resource.data)
+        && isValidStrava(request.resource.data);
 
       allow delete: if isOwner(uid);
 
@@ -63,7 +80,7 @@ service cloud.firestore {
           && request.resource.data.date is string
           && request.resource.data.date.matches('^\\d{4}-\\d{2}-\\d{2}$')
           && request.resource.data.type in [
-               'AMRAP', 'EMOM', 'ForTime', 'Strength', 'Hyrox', 'Custom'
+               'AMRAP', 'EMOM', 'ForTime', 'Strength', 'Hyrox', 'Run', 'Custom'
              ]
           && request.resource.data.scoreType in [
                'time_seconds', 'reps', 'weight', 'rounds_reps', 'pass_fail'
@@ -80,6 +97,10 @@ service cloud.firestore {
           // piece of programming they came from.
           && (request.resource.data.get('octivExerciseId', null) == null
               || request.resource.data.octivExerciseId is string)
+          // Set only on sessions imported from Strava, where it is the id of the
+          // activity they came from. A string because Strava's ids are past 2^53.
+          && (request.resource.data.get('stravaActivityId', null) == null
+              || request.resource.data.stravaActivityId is string)
           // Position within its day, written for a whole day at a time by the
           // reorder panel. Absent on every day nobody has arranged.
           && (request.resource.data.get('order', null) == null

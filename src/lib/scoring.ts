@@ -42,6 +42,71 @@ export function decodeRoundsReps(scoreValue: number): {
   };
 }
 
+/**
+ * A `time_seconds` workout that ran out of time.
+ *
+ * Most "for time" workouts carry a time cap, and an athlete who reaches it
+ * unfinished scores the reps they completed instead of a time. Two different
+ * units, one score type — which the single-`scoreValue` invariant above would
+ * seem to forbid.
+ *
+ * It does not, because the *ranking* is unambiguous: whoever finished beats
+ * whoever did not, and among those who did not, more reps is better. So a capped
+ * result is encoded as a time nobody could ever record:
+ *
+ *     scoreValue = TIME_CAP_BASE - repsCompleted
+ *
+ * A finisher scores their seconds — at most a few thousand. A capped result
+ * scores just under a million. Sorting ascending therefore puts every finisher
+ * ahead of every cap-out, and orders the cap-outs by reps descending, which is
+ * exactly how a CrossFit leaderboard reads. `isLowerBetter` stays true,
+ * `beatsRecord` needs no special case, and the records collection is unchanged.
+ *
+ * The same trick as `encodeRoundsReps` above: pack the compound score into one
+ * number whose natural order is the right order.
+ *
+ * Nothing already stored is affected — every existing time is a count of
+ * seconds, far below the threshold, so it reads as uncapped without a migration.
+ */
+export const TIME_CAP_BASE = 1_000_000;
+
+/**
+ * The most reps a capped result can record.
+ *
+ * Bounds the encoding: reps beyond this would push `scoreValue` down into the
+ * range real times occupy and be read back as a finish time. 100,000 reps is
+ * absurd for any workout with a cap, and the input caps far below it.
+ */
+export const MAX_CAPPED_REPS = 100_000;
+
+/**
+ * At or above this is a capped result, not a time. ~10.4 days as seconds.
+ *
+ * Inclusive, and that matters: a cap-out at exactly `MAX_CAPPED_REPS` encodes to
+ * precisely this value, and an exclusive test would read the one result with the
+ * most reps as a finish time.
+ */
+const TIME_CAP_THRESHOLD = TIME_CAP_BASE - MAX_CAPPED_REPS;
+
+export function encodeCappedReps(reps: number): number {
+  const safe = Math.min(MAX_CAPPED_REPS, Math.max(0, Math.trunc(reps)));
+  return TIME_CAP_BASE - safe;
+}
+
+export function decodeCappedReps(scoreValue: number): number {
+  return TIME_CAP_BASE - Math.trunc(scoreValue);
+}
+
+/**
+ * Whether a `time_seconds` score is a cap-out rather than a finish time.
+ *
+ * Read off the value itself, so no extra field is stored and no document can
+ * disagree with itself about which of the two it holds.
+ */
+export function isTimeCapped(scoreValue: number): boolean {
+  return scoreValue >= TIME_CAP_THRESHOLD;
+}
+
 /** True when a *smaller* `scoreValue` is the better result. */
 export function isLowerBetter(scoreType: ScoreType): boolean {
   return scoreType === "time_seconds";
@@ -108,7 +173,12 @@ export function formatScore(
 ): string {
   switch (scoreType) {
     case "time_seconds":
-      return formatDuration(scoreValue);
+      // Spelled out rather than the leaderboard's "CAP+12", which counts reps
+      // *short* of finishing — a number this app cannot know, because it never
+      // learns how many reps the workout held.
+      return isTimeCapped(scoreValue)
+        ? `${decodeCappedReps(scoreValue)} reps (capped)`
+        : formatDuration(scoreValue);
 
     case "reps":
       return `${Math.trunc(scoreValue)} reps`;

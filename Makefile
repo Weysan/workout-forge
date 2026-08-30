@@ -102,7 +102,7 @@ shell: ## Open a shell inside the running web container
 check: typecheck lint build test ## Run every CI gate locally
 
 .PHONY: test
-test: test-barbell test-offline test-percentages test-stats test-share test-day-order test-octiv test-octiv-cache test-rules test-sw ## Run all tests
+test: test-barbell test-offline test-percentages test-stats test-share test-day-order test-scoring test-octiv test-octiv-cache test-strava test-strava-cache test-strava-client test-rules test-sw ## Run all tests
 
 .PHONY: test-barbell
 test-barbell: ## Barbell plate loading and warm-up ladders
@@ -128,6 +128,10 @@ test-share: ## Share-card content, clamping and filenames
 test-day-order: ## Ordering of a day's sessions (sort, nudge, renumber)
 	npm run test:day-order
 
+.PHONY: test-scoring
+test-scoring: ## Score encoding, the for-time cap, and PR comparison
+	npm run test:scoring
+
 .PHONY: test-octiv
 test-octiv: ## Octiv → workout mapping (score types, ordering, clamping)
 	npm run test:octiv
@@ -135,6 +139,18 @@ test-octiv: ## Octiv → workout mapping (score types, ordering, clamping)
 .PHONY: test-octiv-cache
 test-octiv-cache: ## Octiv WOD cache (TTLs, indexing, unusable storage)
 	npm run test:octiv-cache
+
+.PHONY: test-strava
+test-strava: ## Strava → workout mapping (day bucketing, filtering, record links)
+	npm run test:strava
+
+.PHONY: test-strava-cache
+test-strava-cache: ## Strava activity cache (TTLs, per-athlete indexing, unusable storage)
+	npm run test:strava-cache
+
+.PHONY: test-strava-client
+test-strava-client: ## Strava client: unconfigured builds, and the serialised token refresh
+	npm run test:strava-client
 
 .PHONY: test-rules
 test-rules: ## Firestore security-rules tests (starts the emulator if needed)

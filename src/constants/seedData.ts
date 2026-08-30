@@ -874,6 +874,7 @@ export const WORKOUT_TYPE_OPTIONS = [
   { value: "EMOM", label: "EMOM" },
   { value: "Strength", label: "Strength" },
   { value: "Hyrox", label: "Hyrox" },
+  { value: "Run", label: "Run / Row / Ride" },
   { value: "Custom", label: "Custom" },
 ] as const;
 

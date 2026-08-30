@@ -1,9 +1,10 @@
 /**
- * Brand marks for the SSO buttons.
+ * Brand marks — the SSO buttons, and the integrations on the profile.
  *
- * Inlined rather than pulled from an icon set: both Google and Apple require
- * their logo to be reproduced exactly, and lucide has no trademarked brand
- * glyphs. Google's is multi-colour, so it ignores `currentColor` by design.
+ * Inlined rather than pulled from an icon set: Google, Apple and Strava all
+ * require their logo to be reproduced exactly, and lucide has no trademarked
+ * brand glyphs. Google's and Strava's are fixed-colour, so they ignore
+ * `currentColor` by design.
  */
 
 export function GoogleIcon({ className }: { className?: string }) {
@@ -33,6 +34,18 @@ export function AppleIcon({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" className={className}>
       <path d="M17.05 12.72c-.02-2.4 1.96-3.55 2.05-3.61-1.12-1.64-2.86-1.86-3.47-1.89-1.48-.15-2.88.86-3.63.86-.76 0-1.92-.84-3.15-.82-1.62.02-3.11.94-3.94 2.39-1.68 2.92-.43 7.24 1.21 9.61.8 1.16 1.76 2.46 3.02 2.41 1.21-.05 1.67-.78 3.13-.78 1.45 0 1.86.78 3.13.76 1.29-.02 2.11-1.18 2.9-2.35.91-1.34 1.29-2.65 1.31-2.72-.03-.01-2.52-.97-2.55-3.85M14.66 4.9c.66-.8 1.11-1.92.99-3.03-.98.04-2.16.65-2.85 1.45-.62.71-1.16 1.85-1.02 2.94 1.09.09 2.21-.55 2.88-1.36" />
+    </svg>
+  );
+}
+
+/** Strava's chevron, in its brand orange. */
+export function StravaIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" className={className}>
+      <path
+        fill="#FC4C02"
+        d="M15.387 17.944l-2.089-4.116h-3.065L15.387 24l5.15-10.172h-3.066M10.463 0l-7 13.828h4.169l2.831-5.598 2.836 5.598h4.172z"
+      />
     </svg>
   );
 }

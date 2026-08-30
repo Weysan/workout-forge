@@ -208,6 +208,106 @@ describe("profiles", () => {
       updateDoc(doc(as(ALICE), "users", ALICE), { octiv: "a-bare-token" }),
     );
   });
+
+  it("allows storing a Strava connection", async () => {
+    await assertSucceeds(
+      updateDoc(doc(as(ALICE), "users", ALICE), {
+        strava: {
+          accessToken: "a1b2c3.access",
+          refreshToken: "d4e5f6.refresh",
+          expiresAt: "2026-08-28T00:30:43.000Z",
+          athleteId: 12345,
+          username: "athlete",
+          scope: "read,activity:read_all",
+        },
+      }),
+    );
+  });
+
+  // The difference from Octiv that matters. A Strava access token lasts six
+  // hours, so a connection without a refresh token is dead within the day and
+  // nothing can renew it — better refused at the boundary than stored.
+  it("refuses a Strava connection with no refresh token", async () => {
+    await assertFails(
+      updateDoc(doc(as(ALICE), "users", ALICE), {
+        strava: {
+          accessToken: "a1b2c3.access",
+          refreshToken: "",
+          expiresAt: "2026-08-28T00:30:43.000Z",
+          athleteId: 12345,
+        },
+      }),
+    );
+  });
+
+  it("refuses a Strava connection with no access token", async () => {
+    await assertFails(
+      updateDoc(doc(as(ALICE), "users", ALICE), {
+        strava: {
+          accessToken: "",
+          refreshToken: "d4e5f6.refresh",
+          expiresAt: "2026-08-28T00:30:43.000Z",
+          athleteId: 12345,
+        },
+      }),
+    );
+  });
+
+  it("refuses a Strava athleteId that is not a number", async () => {
+    await assertFails(
+      updateDoc(doc(as(ALICE), "users", ALICE), {
+        strava: {
+          accessToken: "a1b2c3.access",
+          refreshToken: "d4e5f6.refresh",
+          expiresAt: "2026-08-28T00:30:43.000Z",
+          athleteId: "12345",
+        },
+      }),
+    );
+  });
+
+  it("refuses a Strava connection that is not a map", async () => {
+    await assertFails(
+      updateDoc(doc(as(ALICE), "users", ALICE), { strava: "a-bare-token" }),
+    );
+  });
+
+  // Both integrations live on the same document as sibling fields, so the two
+  // validators have to hold at once rather than one masking the other.
+  it("allows both connections at the same time", async () => {
+    await assertSucceeds(
+      updateDoc(doc(as(ALICE), "users", ALICE), {
+        octiv: {
+          accessToken: "eyJ0eXAiOiJKV1Qi.token",
+          tokenType: "Bearer",
+          expiresAt: "2027-08-13T14:30:43.000Z",
+          username: "athlete@example.com",
+        },
+        strava: {
+          accessToken: "a1b2c3.access",
+          refreshToken: "d4e5f6.refresh",
+          expiresAt: "2026-08-28T00:30:43.000Z",
+          athleteId: 12345,
+          username: "athlete",
+          scope: "read,activity:read_all",
+        },
+      }),
+    );
+  });
+
+  it("refuses a bad Strava connection even when Octiv is valid", async () => {
+    await assertFails(
+      updateDoc(doc(as(ALICE), "users", ALICE), {
+        octiv: {
+          accessToken: "eyJ0eXAiOiJKV1Qi.token",
+          tokenType: "Bearer",
+          expiresAt: "2027-08-13T14:30:43.000Z",
+          username: "athlete@example.com",
+        },
+        strava: { accessToken: "a1b2c3.access" },
+      }),
+    );
+  });
 });
 
 describe("workouts", () => {
@@ -253,6 +353,35 @@ describe("workouts", () => {
       setDoc(
         doc(as(ALICE), "users", ALICE, "workouts", "bad-octiv-id"),
         validWorkout({ octivExerciseId: 1780164 }),
+      ),
+    );
+  });
+
+  it("lets a user log a workout imported from Strava", async () => {
+    await assertSucceeds(
+      setDoc(
+        doc(as(ALICE), "users", ALICE, "workouts", "from-strava"),
+        validWorkout({ stravaActivityId: "15450425037", type: "Run" }),
+      ),
+    );
+  });
+
+  // Strava's activity ids are already past 2^53, so they cannot survive a round
+  // trip through JSON as numbers and are stored as strings.
+  it("refuses a Strava id that is not a string", async () => {
+    await assertFails(
+      setDoc(
+        doc(as(ALICE), "users", ALICE, "workouts", "bad-strava-id"),
+        validWorkout({ stravaActivityId: 15450425037 }),
+      ),
+    );
+  });
+
+  it("accepts the Run workout type", async () => {
+    await assertSucceeds(
+      setDoc(
+        doc(as(ALICE), "users", ALICE, "workouts", "a-run"),
+        validWorkout({ type: "Run" }),
       ),
     );
   });

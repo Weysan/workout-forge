@@ -17,6 +17,7 @@ import { useSyncStatus } from "@/lib/hooks/use-sync-status";
 import { KG_PER_LB, LB_PER_KG } from "@/lib/units";
 import type { Gender, UnitSystem } from "@/lib/types";
 import { OctivConnectCard } from "@/components/octiv-connect-card";
+import { StravaConnectCard } from "@/components/strava-connect-card";
 import { TrainingStats } from "@/components/training-stats";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -169,8 +170,9 @@ export default function ProfilePage() {
       </section>
 
       {/* Integrations are a separate concern from who you are and how you like
-          your units, and there will be more of them than Octiv. A tab keeps
-          them out of the way of the settings people actually visit. */}
+          your units. A tab keeps them out of the way of the settings people
+          actually visit. Octiv comes first: it programmes the day, and Strava
+          records what happened outside it. */}
       <Tabs defaultValue="you" className="space-y-5">
         <TabsList>
           <TabsTrigger value="you">Profile</TabsTrigger>
@@ -304,8 +306,9 @@ export default function ProfilePage() {
           </Card>
         </TabsContent>
 
-        <TabsContent value="integrations">
+        <TabsContent value="integrations" className="space-y-5">
           <OctivConnectCard />
+          <StravaConnectCard />
         </TabsContent>
       </Tabs>
 

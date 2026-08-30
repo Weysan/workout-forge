@@ -1,0 +1,23 @@
+# FORGE's Strava token broker. See src/index.ts for why it exists.
+#
+#   cd worker
+#   npm install
+#   npx wrangler secret put STRAVA_CLIENT_SECRET   # once, per environment
+#   npx wrangler deploy
+#
+# The deployed URL goes into NEXT_PUBLIC_STRAVA_WORKER_URL in the app's .env.
+
+name = "forge-strava-broker"
+main = "src/index.ts"
+compatibility_date = "2026-01-01"
+
+# Public values. STRAVA_CLIENT_ID is in the client bundle anyway — it is half of
+# the authorize URL. The secret is deliberately NOT here: it is set with
+# `wrangler secret put`, so it never enters the repo or a build log.
+[vars]
+STRAVA_CLIENT_ID = ""
+ALLOWED_ORIGINS = "http://localhost:3000,https://workout-forge-7f364.web.app"
+
+# `wrangler dev` serves on http://localhost:8787.
+[dev]
+port = 8787
