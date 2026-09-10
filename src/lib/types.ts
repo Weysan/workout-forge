@@ -28,6 +28,25 @@ export type ScoreType =
   | "reps"
   | "weight"
   | "rounds_reps"
+  /**
+   * Ground covered, in metres, with the time it took alongside it in
+   * `Workout.durationSeconds`.
+   *
+   * The pair is deliberate. An open run is two numbers and neither one is the
+   * result on its own: "8 km" says nothing about the effort and "42:10" says
+   * nothing about the session. Distance is the ranked half — further is better,
+   * so `isLowerBetter` stays false — and the time rides along the way `reps`
+   * rides along with a `weight` score.
+   *
+   * They are deliberately *not* packed into one number the way `rounds_reps`
+   * and the time cap are. Those work because their ordering is unambiguous;
+   * a longer slow run and a shorter fast one have no such order, and inventing
+   * one would rank sessions by a rule nobody believes.
+   *
+   * Any change here must be made in `firestore.rules` and in
+   * `SCORE_TYPE_OPTIONS` at the same time, or the rules reject the write.
+   */
+  | "distance_metres"
   | "pass_fail";
 
 export type RxOrScaled = "RX" | "Scaled";
@@ -120,6 +139,19 @@ export interface UserProfile {
   octiv?: OctivConnection | null;
   /** Absent or null when no Strava account is connected. */
   strava?: StravaConnection | null;
+  /**
+   * Places this athlete has tagged a session with, most recently used first.
+   *
+   * Kept here rather than derived from the log because the profile is already
+   * read once per session and cached, so the workout form gets its suggestions
+   * for free — the alternative is a query across workouts every time the form
+   * opens, to collect half a dozen strings.
+   *
+   * Sanitised on read and capped on write by lib/locations.ts. Nothing depends on
+   * it: losing an entry costs one retype, which is why it can live somewhere this
+   * cheap.
+   */
+  locations?: string[] | null;
   createdAt: Timestamp | null;
 }
 
@@ -162,6 +194,18 @@ export interface Workout {
   /** Reps performed at `scoreValue` kg. Strength lifts only. */
   reps?: number | null;
   /**
+   * Time taken to cover `scoreValue` metres. `distance_metres` sessions only.
+   *
+   * The exact counterpart of `reps` above: a second number that qualifies the
+   * score without being the score. `null` on a distance session logged without
+   * a time — a route walked to recce it is still a distance worth keeping — and
+   * absent on every other score type.
+   *
+   * Pace is derived from the two at render time and never stored, so a distance
+   * corrected in the form cannot leave a stale pace behind it.
+   */
+  durationSeconds?: number | null;
+  /**
    * Position within its day, from 0 — the sequence the athlete trained it in.
    *
    * Absent until the day is arranged, and then written for every session on that
@@ -193,6 +237,16 @@ export interface Workout {
    * survive a round trip through JSON as numbers.
    */
   stravaActivityId?: string | null;
+  /**
+   * Where the session was trained — a free-text label such as "CrossFit Berlin"
+   * or "home garage".
+   *
+   * Optional, and `null` on every session logged before this existed and on
+   * everything imported from Octiv or Strava. Nothing derives from it: it is
+   * shown on the card and carried through an edit, and that is all. See
+   * lib/locations.ts for why it is a name rather than a pair of coordinates.
+   */
+  location?: string | null;
   notes: string;
   createdAt: Timestamp | null;
 }

@@ -210,7 +210,10 @@ export function ReorderSheet({
                     workout.scoreType,
                     workout.scoreValue,
                     unitSystem,
-                    workout.reps,
+                    {
+                      reps: workout.reps,
+                      durationSeconds: workout.durationSeconds,
+                    },
                   )
                 : null;
               const lifted = drag?.fromIndex === index;

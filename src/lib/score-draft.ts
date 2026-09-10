@@ -7,7 +7,12 @@ import {
   isTimeCapped,
   toTotalSeconds,
 } from "./scoring";
-import { toDisplayWeight, toStoredWeight } from "./units";
+import {
+  toDisplayDistance,
+  toDisplayWeight,
+  toStoredDistance,
+  toStoredWeight,
+} from "./units";
 import type { ScoreType, UnitSystem, Workout } from "./types";
 
 /**
@@ -41,6 +46,17 @@ export interface ScoreDraft {
   weight: string;
   weightUnit: UnitSystem;
   weightReps: string;
+  /**
+   * distance_metres — the distance, in `distanceUnit`, and the time it took.
+   *
+   * The time has its own two fields rather than reusing `minutes`/`seconds`:
+   * those belong to `time_seconds`, and sharing them would let a time typed for
+   * a for-time workout reappear as a run's duration after a type switch.
+   */
+  distance: string;
+  distanceUnit: UnitSystem;
+  distanceMinutes: string;
+  distanceSeconds: string;
   /** pass_fail — `null` until answered, so an unscored session stays unscored. */
   completed: boolean | null;
 }
@@ -57,6 +73,10 @@ export function emptyDraft(unitSystem: UnitSystem): ScoreDraft {
     weight: "",
     weightUnit: unitSystem,
     weightReps: "1",
+    distance: "",
+    distanceUnit: unitSystem,
+    distanceMinutes: "",
+    distanceSeconds: "",
     completed: null,
   };
 }
@@ -98,6 +118,24 @@ export function draftFromWorkout(
       draft.weightUnit = unitSystem;
       draft.weightReps = String(workout.reps ?? 1);
       break;
+    case "distance_metres": {
+      draft.distance = String(
+        toDisplayDistance(workout.scoreValue, unitSystem),
+      );
+      draft.distanceUnit = unitSystem;
+
+      // A distance session may have been logged without a time, which leaves
+      // both fields empty rather than showing a confident "00:00".
+      const seconds = workout.durationSeconds;
+      if (typeof seconds === "number" && seconds > 0) {
+        const parts = fromTotalSeconds(seconds);
+        // Hours fold into minutes, as they do for `time_seconds` above: the
+        // form has no hours field, and a two-hour run is "120".
+        draft.distanceMinutes = String(parts.hours * 60 + parts.minutes);
+        draft.distanceSeconds = String(parts.seconds).padStart(2, "0");
+      }
+      break;
+    }
     case "pass_fail":
       draft.completed = workout.scoreValue >= 1;
       break;
@@ -116,6 +154,8 @@ export interface ResolvedScore {
   scoreValue: number | null;
   scoreDisplay: string;
   reps: number | null;
+  /** Set only by `distance_metres`, and only when a time was entered. */
+  durationSeconds: number | null;
 }
 
 /** What an untouched score section resolves to: a session with no result yet. */
@@ -123,6 +163,7 @@ const UNSCORED: ResolvedScore = {
   scoreValue: null,
   scoreDisplay: "",
   reps: null,
+  durationSeconds: null,
 };
 
 /**
@@ -151,6 +192,7 @@ export function resolveScore(
         scoreValue,
         scoreDisplay: formatScore("time_seconds", scoreValue, unitSystem),
         reps: null,
+        durationSeconds: null,
       };
     }
 
@@ -163,6 +205,7 @@ export function resolveScore(
         scoreValue,
         scoreDisplay: formatScore("rounds_reps", scoreValue, unitSystem),
         reps: null,
+        durationSeconds: null,
       };
     }
 
@@ -172,6 +215,7 @@ export function resolveScore(
         scoreValue,
         scoreDisplay: formatScore("reps", scoreValue, unitSystem),
         reps: null,
+        durationSeconds: null,
       };
     }
 
@@ -181,8 +225,34 @@ export function resolveScore(
       const reps = Math.max(1, Math.trunc(num(draft.weightReps) || 1));
       return {
         scoreValue,
-        scoreDisplay: formatScore("weight", scoreValue, unitSystem, reps),
+        scoreDisplay: formatScore("weight", scoreValue, unitSystem, { reps }),
         reps,
+        durationSeconds: null,
+      };
+    }
+
+    case "distance_metres": {
+      // Always stored in metres, whichever unit the user typed in — the same
+      // rule `weight` follows with kilograms.
+      const scoreValue = toStoredDistance(
+        num(draft.distance),
+        draft.distanceUnit,
+      );
+      // The time is optional, and zero means "not given" rather than "instant".
+      const entered = toTotalSeconds(
+        0,
+        num(draft.distanceMinutes),
+        num(draft.distanceSeconds),
+      );
+      const durationSeconds = entered > 0 ? entered : null;
+
+      return {
+        scoreValue,
+        scoreDisplay: formatScore("distance_metres", scoreValue, unitSystem, {
+          durationSeconds,
+        }),
+        reps: null,
+        durationSeconds,
       };
     }
 
@@ -192,6 +262,7 @@ export function resolveScore(
         scoreValue,
         scoreDisplay: formatScore("pass_fail", scoreValue, unitSystem),
         reps: null,
+        durationSeconds: null,
       };
     }
   }
@@ -215,6 +286,10 @@ export function isScoreComplete(
       return num(draft.totalReps) > 0;
     case "weight":
       return num(draft.weight) > 0;
+    case "distance_metres":
+      // The distance alone is the result. A time makes it a better record, but
+      // requiring one would refuse to log a route the athlete only walked.
+      return num(draft.distance) > 0;
     case "pass_fail":
       // Both answers are valid, including "did not finish" — but one of them has
       // to actually be picked.

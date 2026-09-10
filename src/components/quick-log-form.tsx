@@ -111,6 +111,7 @@ export function QuickLogForm({
       scoreDisplay: resolved.scoreDisplay,
       rxOrScaled: showStandardToggle ? rxOrScaled : "RX",
       reps: resolved.reps,
+      durationSeconds: resolved.durationSeconds,
     } satisfies Partial<WorkoutInput>;
 
     if (workout) {

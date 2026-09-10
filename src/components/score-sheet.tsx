@@ -118,6 +118,7 @@ function ScoreForm({
       // record recompute right after the write decides who actually holds it.
       isPR: markAsPR,
       reps: resolved.reps,
+      durationSeconds: resolved.durationSeconds,
     };
 
     try {

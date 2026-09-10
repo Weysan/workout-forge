@@ -187,9 +187,12 @@ describe("activitiesToWorkoutInputs", () => {
   it("imports a run already scored, unlike an Octiv import", () => {
     const [workout] = activitiesToWorkoutInputs([activity()], "2026-08-27");
 
-    assert.equal(workout.scoreType, "time_seconds");
-    assert.equal(workout.scoreValue, 1387);
-    assert.equal(workout.scoreDisplay, "23:07");
+    // Both numbers: the metres rank, the duration rides along, and the pace on
+    // the card is worked out from the two.
+    assert.equal(workout.scoreType, "distance_metres");
+    assert.equal(workout.scoreValue, 5024);
+    assert.equal(workout.durationSeconds, 1387);
+    assert.equal(workout.scoreDisplay, "5.02 km · 23:07 (04:36 /km)");
     assert.equal(workout.type, "Run");
     assert.equal(workout.title, "Evening Run");
     assert.equal(workout.date, "2026-08-27");
@@ -198,13 +201,55 @@ describe("activitiesToWorkoutInputs", () => {
     assert.equal(workout.isPR, false);
   });
 
-  it("writes what Strava measured into the description", () => {
+  it("scores a treadmill run on time, having no distance to record", () => {
+    const treadmill = activity({ distance: null, trainer: true });
+    const [workout] = activitiesToWorkoutInputs([treadmill], "2026-08-27");
+
+    assert.equal(workout.scoreType, "time_seconds");
+    assert.equal(workout.scoreValue, 1387);
+    assert.equal(workout.scoreDisplay, "23:07");
+    // Never set on a time score, where the duration *is* the score.
+    assert.equal(workout.durationSeconds, null);
+  });
+
+  it("keeps a race on time, so the record table compares like with like", () => {
+    // The trap this guards: `syncRecordForBenchmark` ranks attempts with the
+    // *benchmark's* score type, and every running benchmark is scored on time.
+    // Imported as metres, the slowest 5 km on record would hold the PR.
+    const race = activity({ workout_type: 1, distance: 5000 });
+    const [workout] = activitiesToWorkoutInputs([race], "2026-08-27");
+
+    assert.equal(workout.linkedBenchmarkId, "run_5k");
+    assert.equal(workout.scoreType, "time_seconds");
+    assert.equal(workout.scoreValue, 1387);
+    assert.equal(workout.durationSeconds, null);
+  });
+
+  it("shows a short distance in metres — a 400 is not 0.40 km", () => {
+    const rep = activity({ distance: 400, moving_time: 82 });
+    const [workout] = activitiesToWorkoutInputs([rep], "2026-08-27");
+
+    assert.equal(workout.scoreDisplay, "400 m · 01:22 (03:25 /km)");
+  });
+
+  it("leaves out of the description what the score already says", () => {
     const [workout] = activitiesToWorkoutInputs([activity()], "2026-08-27");
 
-    assert.match(workout.description, /Distance: 5\.02 km/);
-    assert.match(workout.description, /Pace: 04:36 \/km/);
+    // The card is headed "5.02 km · 23:07 (04:36 /km)" — repeating either under
+    // it is noise.
+    assert.doesNotMatch(workout.description, /Distance/);
+    assert.doesNotMatch(workout.description, /Pace/);
     assert.match(workout.description, /Elevation: 42 m/);
     assert.match(workout.description, /Avg HR: 154 bpm/);
+  });
+
+  it("still writes the distance down when the score is a time", () => {
+    // A race is scored on time, so its distance has nowhere else to go.
+    const race = activity({ workout_type: 1, distance: 5000 });
+    const [workout] = activitiesToWorkoutInputs([race], "2026-08-27");
+
+    assert.match(workout.description, /Distance: 5\.00 km/);
+    assert.match(workout.description, /Pace: 04:37 \/km/);
   });
 
   it("omits measurements Strava did not send", () => {
@@ -227,8 +272,9 @@ describe("activitiesToWorkoutInputs", () => {
     const crawl = activity({ distance: 1000, moving_time: 25 * 60 });
     const [workout] = activitiesToWorkoutInputs([crawl], "2026-08-27");
 
-    assert.match(workout.description, /Distance: 1\.00 km/);
-    assert.doesNotMatch(workout.description, /Pace/);
+    // The distance and the time are both real and both kept; only the pace
+    // between them is dropped.
+    assert.equal(workout.scoreDisplay, "1.00 km · 25:00");
   });
 
   it("drops activities from the days either side of the one asked for", () => {

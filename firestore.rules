@@ -47,6 +47,16 @@ service cloud.firestore {
             && data.strava.get('athleteId', 0) is int);
     }
 
+    // Places the athlete has tagged sessions with, or no field at all. Rules can
+    // pin the type and the length of a list but cannot walk its elements, so the
+    // promise that these are non-empty, unique, trimmed strings is kept on the way
+    // in by src/lib/locations.ts. This is the ceiling, not the schema — the size
+    // matches MAX_REMEMBERED_LOCATIONS there.
+    function isValidLocations(data) {
+      return !data.keys().hasAny(['locations'])
+        || (data.locations is list && data.locations.size() <= 12);
+    }
+
     // --- User profile ----------------------------------------------------
     match /users/{uid} {
       allow read: if isOwner(uid);
@@ -57,7 +67,8 @@ service cloud.firestore {
         && request.resource.data.gender in ['male', 'female', 'non_binary']
         && request.resource.data.unitSystem in ['metric', 'imperial']
         && isValidOctiv(request.resource.data)
-        && isValidStrava(request.resource.data);
+        && isValidStrava(request.resource.data)
+        && isValidLocations(request.resource.data);
 
       allow update: if isOwner(uid)
         // uid is immutable once written.
@@ -66,7 +77,8 @@ service cloud.firestore {
         && request.resource.data.gender in ['male', 'female', 'non_binary']
         && request.resource.data.unitSystem in ['metric', 'imperial']
         && isValidOctiv(request.resource.data)
-        && isValidStrava(request.resource.data);
+        && isValidStrava(request.resource.data)
+        && isValidLocations(request.resource.data);
 
       allow delete: if isOwner(uid);
 
@@ -83,7 +95,8 @@ service cloud.firestore {
                'AMRAP', 'EMOM', 'ForTime', 'Strength', 'Hyrox', 'Run', 'Custom'
              ]
           && request.resource.data.scoreType in [
-               'time_seconds', 'reps', 'weight', 'rounds_reps', 'pass_fail'
+               'time_seconds', 'reps', 'weight', 'rounds_reps',
+               'distance_metres', 'pass_fail'
              ]
           && request.resource.data.rxOrScaled in ['RX', 'Scaled']
           // A null score is a session logged before its result is known — see
@@ -101,11 +114,23 @@ service cloud.firestore {
           // activity they came from. A string because Strava's ids are past 2^53.
           && (request.resource.data.get('stravaActivityId', null) == null
               || request.resource.data.stravaActivityId is string)
+          // How long a `distance_metres` session took, in seconds. Optional
+          // even on those — a distance can be logged without a time — and
+          // absent on every other score type. See the Workout type.
+          && (request.resource.data.get('durationSeconds', null) == null
+              || (request.resource.data.durationSeconds is number
+                  && request.resource.data.durationSeconds >= 0))
           // Position within its day, written for a whole day at a time by the
           // reorder panel. Absent on every day nobody has arranged.
           && (request.resource.data.get('order', null) == null
               || (request.resource.data.order is int
                   && request.resource.data.order >= 0))
+          // Where the session was trained — free text, and absent on everything
+          // imported and on everything logged before places existed. The ceiling
+          // matches MAX_LOCATION_LENGTH in src/lib/locations.ts.
+          && (request.resource.data.get('location', null) == null
+              || (request.resource.data.location is string
+                  && request.resource.data.location.size() <= 120))
           && request.resource.data.description.size() <= 5000
           && request.resource.data.notes.size() <= 5000;
       }

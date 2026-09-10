@@ -308,6 +308,41 @@ describe("profiles", () => {
       }),
     );
   });
+
+  // The places the athlete has tagged sessions with, kept on the profile so the
+  // workout form gets its suggestions without a second query.
+  it("lets a user remember the places they train at", async () => {
+    await assertSucceeds(
+      updateDoc(doc(as(ALICE), "users", ALICE), {
+        locations: ["CrossFit Berlin", "Home garage"],
+      }),
+    );
+  });
+
+  it("lets a user clear their remembered places", async () => {
+    await assertSucceeds(
+      updateDoc(doc(as(ALICE), "users", ALICE), { locations: [] }),
+    );
+  });
+
+  it("refuses remembered places that are not a list", async () => {
+    await assertFails(
+      updateDoc(doc(as(ALICE), "users", ALICE), {
+        locations: "CrossFit Berlin",
+      }),
+    );
+  });
+
+  // The rules cap the list's length but cannot walk its elements — see
+  // isValidLocations, and readLocations in src/lib/locations.ts, which is what
+  // actually guarantees the contents.
+  it("refuses an unbounded list of remembered places", async () => {
+    await assertFails(
+      updateDoc(doc(as(ALICE), "users", ALICE), {
+        locations: Array.from({ length: 13 }, (_, i) => `Box ${i}`),
+      }),
+    );
+  });
 });
 
 describe("workouts", () => {
@@ -377,11 +412,91 @@ describe("workouts", () => {
     );
   });
 
+  // Where the session was trained. Optional, so both a tagged and an untagged
+  // session have to be accepted — `validWorkout()` above is the untagged case.
+  it("lets a user tag a workout with a place", async () => {
+    await assertSucceeds(
+      setDoc(
+        doc(as(ALICE), "users", ALICE, "workouts", "at-the-box"),
+        validWorkout({ location: "CrossFit Berlin" }),
+      ),
+    );
+  });
+
+  it("refuses a place that is not a string", async () => {
+    await assertFails(
+      setDoc(
+        doc(as(ALICE), "users", ALICE, "workouts", "bad-location"),
+        validWorkout({ location: { name: "CrossFit Berlin" } }),
+      ),
+    );
+  });
+
+  it("refuses a place longer than the field allows", async () => {
+    await assertFails(
+      setDoc(
+        doc(as(ALICE), "users", ALICE, "workouts", "long-location"),
+        validWorkout({ location: "b".repeat(121) }),
+      ),
+    );
+  });
+
   it("accepts the Run workout type", async () => {
     await assertSucceeds(
       setDoc(
         doc(as(ALICE), "users", ALICE, "workouts", "a-run"),
         validWorkout({ type: "Run" }),
+      ),
+    );
+  });
+
+  // An open run: metres as the score, with the time it took beside it.
+  it("accepts a distance score and the duration that goes with it", async () => {
+    await assertSucceeds(
+      setDoc(
+        doc(as(ALICE), "users", ALICE, "workouts", "open-run"),
+        validWorkout({
+          type: "Run",
+          scoreType: "distance_metres",
+          scoreValue: 8000,
+          scoreDisplay: "8.00 km · 42:10 (05:16 /km)",
+          durationSeconds: 2530,
+        }),
+      ),
+    );
+  });
+
+  // The time is optional even on a distance session — a route walked to recce
+  // it is still a distance worth keeping.
+  it("accepts a distance logged without a time", async () => {
+    await assertSucceeds(
+      setDoc(
+        doc(as(ALICE), "users", ALICE, "workouts", "untimed-run"),
+        validWorkout({
+          type: "Run",
+          scoreType: "distance_metres",
+          scoreValue: 12000,
+          scoreDisplay: "12.00 km",
+          durationSeconds: null,
+        }),
+      ),
+    );
+  });
+
+  it("refuses a duration that is not a number", async () => {
+    await assertFails(
+      setDoc(
+        doc(as(ALICE), "users", ALICE, "workouts", "bad-duration"),
+        validWorkout({ durationSeconds: "42:10" }),
+      ),
+    );
+  });
+
+  it("refuses a negative duration", async () => {
+    await assertFails(
+      setDoc(
+        doc(as(ALICE), "users", ALICE, "workouts", "negative-duration"),
+        validWorkout({ durationSeconds: -1 }),
       ),
     );
   });

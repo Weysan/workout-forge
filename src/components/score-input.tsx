@@ -191,6 +191,70 @@ export function ScoreInput({
         </Field>
       );
 
+    case "distance_metres":
+      return (
+        <Field label="Distance">
+          <div className="flex items-end gap-2">
+            <NumberBox
+              id={id("distance")}
+              label={draft.distanceUnit === "metric" ? "km" : "mi"}
+              value={draft.distance}
+              onValueChange={(distance) => onChange({ distance })}
+              // 5.01 km and 5.1 km are different runs.
+              decimal
+              placeholder="0.00"
+            />
+          </div>
+
+          <ToggleGroup
+            type="single"
+            value={draft.distanceUnit}
+            onValueChange={(value) => {
+              if (value) onChange({ distanceUnit: value as UnitSystem });
+            }}
+            className="mt-2"
+          >
+            <ToggleGroupItem value="metric">km</ToggleGroupItem>
+            <ToggleGroupItem value="imperial">mi</ToggleGroupItem>
+          </ToggleGroup>
+
+          {draft.distanceUnit !== unitSystem && (
+            <Hint>
+              Entered in {draft.distanceUnit === "metric" ? "km" : "miles"},
+              shown elsewhere in {unitSystem === "metric" ? "km" : "miles"}.
+            </Hint>
+          )}
+
+          {/* The time is a second field rather than a second score: the
+              distance is what ranks, and a run logged without a stopwatch is
+              still a run. Pace is worked out from the two and never typed. */}
+          <div className="mt-4 flex items-end gap-2">
+            <NumberBox
+              id={id("distance-minutes")}
+              label="Min"
+              value={draft.distanceMinutes}
+              onValueChange={(distanceMinutes) => onChange({ distanceMinutes })}
+              max={999}
+              placeholder="0"
+            />
+            <span className="font-display pb-3 text-2xl font-bold text-muted-foreground">
+              :
+            </span>
+            <NumberBox
+              id={id("distance-seconds")}
+              label="Sec"
+              value={draft.distanceSeconds}
+              onValueChange={(distanceSeconds) => onChange({ distanceSeconds })}
+              max={59}
+              placeholder="00"
+            />
+          </div>
+          <Hint>
+            Time is optional — add it and the card shows your pace.
+          </Hint>
+        </Field>
+      );
+
     case "pass_fail":
       return (
         <Field label="Result">

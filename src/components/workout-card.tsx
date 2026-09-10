@@ -7,6 +7,7 @@ import {
   CalendarClockIcon,
   CalendarPlusIcon,
   FlameIcon,
+  MapPinIcon,
   MoreVerticalIcon,
   PencilIcon,
   PlusIcon,
@@ -57,12 +58,10 @@ export function WorkoutCard({
   // Null rather than a formatted string when the session has no result yet, so
   // the card has to choose what to show instead of printing a confident "00:00".
   const score = isScored(workout)
-    ? formatScore(
-        workout.scoreType,
-        workout.scoreValue,
-        unitSystem,
-        workout.reps,
-      )
+    ? formatScore(workout.scoreType, workout.scoreValue, unitSystem, {
+        reps: workout.reps,
+        durationSeconds: workout.durationSeconds,
+      })
     : null;
 
   // A session dated ahead has not happened, so there is no result to enter. The
@@ -129,6 +128,16 @@ export function WorkoutCard({
           <h3 className="truncate text-lg leading-tight font-bold">
             {workout.title}
           </h3>
+
+          {/* Under the title rather than in the badge row above: badges are
+              uppercase, and a place is a proper noun — "CROSSFIT BERLIN" reads
+              as shouting. Absent entirely when untagged, which is most cards. */}
+          {workout.location && (
+            <p className="text-muted-foreground flex items-center gap-1 text-xs">
+              <MapPinIcon className="size-3.5 shrink-0" />
+              <span className="truncate">{workout.location}</span>
+            </p>
+          )}
         </div>
 
         <Popover open={menuOpen} onOpenChange={setMenuOpen}>

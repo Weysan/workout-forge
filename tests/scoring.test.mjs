@@ -227,3 +227,133 @@ describe("the score form", () => {
     );
   });
 });
+
+/**
+ * An open run is two numbers — how far, and how long — and neither is the
+ * result on its own. `distance_metres` ranks the metres and carries the seconds
+ * alongside in `durationSeconds`, rather than packing them together the way the
+ * time cap and `rounds_reps` pack theirs. What is worth pinning down is that
+ * the second number never leaks into the first, in either direction.
+ */
+describe("distance scoring", () => {
+  const metric = "metric";
+  const imperial = "imperial";
+
+  function distanceDraft(overrides = {}) {
+    return { ...emptyDraft(metric), ...overrides };
+  }
+
+  it("ranks on the distance, not the time", () => {
+    // Further is better, so the ordinary "higher wins" comparison applies —
+    // the same one `reps` and `weight` use.
+    assert.equal(isLowerBetter("distance_metres"), false);
+    assert.equal(beatsRecord("distance_metres", 10000, 5000), true);
+    assert.equal(beatsRecord("distance_metres", 5000, 10000), false);
+  });
+
+  it("stores metres, whichever unit was typed in", () => {
+    const km = resolveScore(
+      distanceDraft({ distance: "5", distanceUnit: metric }),
+      "distance_metres",
+      metric,
+    );
+    assert.equal(km.scoreValue, 5000);
+
+    const miles = resolveScore(
+      distanceDraft({ distance: "5", distanceUnit: imperial }),
+      "distance_metres",
+      metric,
+    );
+    assert.equal(miles.scoreValue, 8047);
+  });
+
+  it("keeps the time beside the score rather than inside it", () => {
+    const resolved = resolveScore(
+      distanceDraft({
+        distance: "8",
+        distanceMinutes: "42",
+        distanceSeconds: "10",
+      }),
+      "distance_metres",
+      metric,
+    );
+
+    assert.equal(resolved.scoreValue, 8000);
+    assert.equal(resolved.durationSeconds, 2530);
+    assert.equal(resolved.scoreDisplay, "8.00 km · 42:10 (05:16 /km)");
+  });
+
+  it("counts a distance with no time as a complete result", () => {
+    // A route walked to recce it is still a distance worth keeping, so the
+    // time is optional — unlike the distance, which is the score.
+    const draft = distanceDraft({ distance: "12" });
+    assert.equal(isScoreComplete(draft, "distance_metres"), true);
+
+    const resolved = resolveScore(draft, "distance_metres", metric);
+    assert.equal(resolved.durationSeconds, null);
+    assert.equal(resolved.scoreDisplay, "12.00 km");
+  });
+
+  it("leaves a session with no distance unscored", () => {
+    // A time on its own is a `time_seconds` workout, not a distance one.
+    const draft = distanceDraft({ distanceMinutes: "42" });
+    assert.equal(isScoreComplete(draft, "distance_metres"), false);
+    assert.equal(
+      resolveScore(draft, "distance_metres", metric).scoreValue,
+      null,
+    );
+  });
+
+  it("drops a pace that would be noise", () => {
+    // 25 minutes for a kilometre is walking or standing still, and a "pace"
+    // there says nothing. The distance and the time both survive.
+    assert.equal(
+      formatScore("distance_metres", 1000, metric, { durationSeconds: 1500 }),
+      "1.00 km · 25:00",
+    );
+  });
+
+  it("reads short distances in metres, and imperial in miles", () => {
+    assert.equal(formatScore("distance_metres", 400, metric), "400 m");
+    assert.equal(formatScore("distance_metres", 5000, imperial), "3.11 mi");
+    assert.equal(
+      formatScore("distance_metres", 5000, imperial, { durationSeconds: 1500 }),
+      "3.11 mi · 25:00 (08:03 /mi)",
+    );
+  });
+
+  it("round-trips a stored session through the form unchanged", () => {
+    const workout = {
+      scoreType: "distance_metres",
+      scoreValue: 8047,
+      durationSeconds: 2530,
+      reps: null,
+    };
+
+    const draft = draftFromWorkout(workout, metric);
+    assert.equal(draft.distance, "8.05");
+    assert.equal(draft.distanceMinutes, "42");
+    assert.equal(draft.distanceSeconds, "10");
+
+    // Reopening and saving unchanged must not move the score. 8.05 km is what
+    // the form showed, so that is what it saves.
+    const resolved = resolveScore(draft, "distance_metres", metric);
+    assert.equal(resolved.scoreValue, 8050);
+    assert.equal(resolved.durationSeconds, 2530);
+  });
+
+  it("does not carry a for-time score into a run's duration", () => {
+    // The two share no fields, so switching type and back cannot smuggle a
+    // time typed for a for-time workout in as a run's duration.
+    const draft = distanceDraft({
+      minutes: "18",
+      seconds: "30",
+      distance: "5",
+    });
+
+    assert.equal(
+      resolveScore(draft, "distance_metres", metric).durationSeconds,
+      null,
+    );
+  });
+});

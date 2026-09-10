@@ -893,5 +893,6 @@ export const SCORE_TYPE_OPTIONS = [
   { value: "rounds_reps", label: "Rounds + Reps" },
   { value: "reps", label: "Total Reps" },
   { value: "weight", label: "Weight" },
+  { value: "distance_metres", label: "Distance + Time" },
   { value: "pass_fail", label: "Completed / DNF" },
 ] as const;

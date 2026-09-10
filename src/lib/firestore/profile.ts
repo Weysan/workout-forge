@@ -11,6 +11,7 @@ import {
 } from "firebase/firestore";
 
 import { getDb } from "@/lib/firebase";
+import { readLocations, rememberLocation } from "@/lib/locations";
 import { acceptWrite, isOnline, readWithCacheFallback } from "@/lib/offline";
 import type {
   Gender,
@@ -98,6 +99,7 @@ export async function fetchProfile(uid: string): Promise<UserProfile | null> {
     unitSystem: (data.unitSystem as UnitSystem) ?? "metric",
     octiv: toOctivConnection(data.octiv),
     strava: toStravaConnection(data.strava),
+    locations: readLocations(data.locations),
     createdAt: data.createdAt ?? null,
   };
 }
@@ -130,6 +132,41 @@ export async function updateProfile(
   patch: Partial<Pick<UserProfile, "displayName" | "gender" | "unitSystem">>,
 ): Promise<void> {
   await acceptWrite("update profile", updateDoc(userDoc(uid), patch));
+}
+
+/**
+ * Move a place to the front of the athlete's remembered list, and return the
+ * list as it was written — or `null` when there was nothing to write.
+ *
+ * Called after a workout is saved, never before: a place is worth remembering
+ * because a session happened there, and remembering one from a form the athlete
+ * abandoned would put a phantom box in their suggestions.
+ *
+ * `null` covers the ordinary case — the same box as last time, already at the
+ * front — so the tenth session at your own gym costs no write at all. The caller
+ * treats a failure here as nothing happening: this list is a convenience, and
+ * losing an entry costs one retype, so it must never be able to fail a save.
+ */
+export async function rememberProfileLocation(
+  uid: string,
+  current: readonly string[],
+  name: string | null,
+): Promise<string[] | null> {
+  const next = rememberLocation(current, name);
+
+  if (
+    next.length === current.length &&
+    next.every((place, index) => place === current[index])
+  ) {
+    return null;
+  }
+
+  await acceptWrite(
+    `remember location ${name}`,
+    updateDoc(userDoc(uid), { locations: next }),
+  );
+
+  return next;
 }
 
 /**

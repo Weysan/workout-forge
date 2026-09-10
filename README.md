@@ -73,18 +73,44 @@ makes rest and injured mutually exclusive, since they are values of one
 `status` field. The same key is duplicated into a `date` field so ranges are
 queryable; the rules pin the two together so they cannot disagree.
 
+A session can carry a **place** — `location`, a free-text label such as
+"CrossFit Berlin" or "home garage". Optional, absent on everything imported, and
+nothing derives from it: it shows on the card and survives an edit.
+
+It is a name rather than a pair of coordinates on purpose. What belongs on a card
+is the name of the box, which is what the athlete already knows; turning GPS into
+one means a permission prompt and a reverse-geocoding call, in an app whose whole
+write path is built to work with no connection at all.
+
+To keep the second session at the same box from being retyped, the places an
+athlete has used are kept as a short list on their profile — most recent first,
+deduplicated case-insensitively, capped at twelve (`src/lib/locations.ts`). The
+profile is already read once per session and cached, so the form gets its
+suggestion chips for nothing; the alternative was a query across the whole log
+every time the form opened, to collect half a dozen strings. Nothing depends on
+that list, which is what lets it live somewhere this cheap: losing an entry costs
+one retype, and the field is free text regardless.
+
 ### Three storage invariants
 
 These are the rules that keep the app coherent, and the reason most bugs in an
 app like this never happen here:
 
-1. **Loads are stored in kilograms. Durations are stored in seconds.** Imperial
-   is a render-time concern only (`src/lib/units.ts`), so a user can flip
-   kg → lbs at any time and their entire history follows without a migration.
+1. **Loads are stored in kilograms. Durations are stored in seconds. Distances
+   are stored in metres.** Imperial is a render-time concern only
+   (`src/lib/units.ts`), so a user can flip kg → lbs or km → miles at any time
+   and their entire history follows without a migration.
 2. **`scoreValue` is always the comparable number**, whatever the score type
    (`src/lib/scoring.ts`). Records, sorting and PR detection never branch on
    score type at the query layer. `rounds_reps` packs two numbers as
    `rounds * 1000 + partialReps`, which sorts correctly by rounds then reps.
+
+   Two score types carry a *second* number that is deliberately **not** packed
+   in: `weight` keeps its `reps`, and `distance_metres` keeps the
+   `durationSeconds` the distance took. Packing works for `rounds_reps` and the
+   time cap because their ordering is unambiguous; a longer slow run and a
+   shorter fast one have no such order, so the metres rank and the time rides
+   along. Pace is derived at render time and never stored.
 
    The one exception is `null`, which means *logged but not scored yet* — a
    session written down in advance. It is deliberately not `0`, because zero is a
@@ -371,13 +397,14 @@ is no test framework to configure.
 | `tests/barbell.test.mjs` | `make test-barbell` | plate loading and warm-up ladders, in integer hundredths |
 | `tests/share-card.test.mjs` | `make test-share` | 35 tests on what lands on a shared image: WOD clamping, badges, day rows, filenames |
 | `tests/day-order.test.mjs` | `make test-day-order` | 23 tests on the order a day's sessions read in: sorting, nudging, renumbering |
+| `tests/locations.test.mjs` | `make test-locations` | 19 tests on place labels and the remembered-places list: normalising, deduplicating, capping, suggesting |
 | `tests/scoring.test.mjs` | `make test-scoring` | 20 tests on score encoding: the for-time cap, its ordering against finish times, and backward compatibility |
 | `tests/octiv.test.mjs` | `make test-octiv` | 18 tests on turning a day of Octiv programming into workouts |
 | `tests/octiv-cache.test.mjs` | `make test-octiv-cache` | 19 tests on the WOD cache: TTLs, parameter indexing, unusable storage |
 | `tests/strava.test.mjs` | `make test-strava` | 39 tests on turning Strava activities into workouts: local-day bucketing, sport-type filtering, which runs may claim a record |
 | `tests/strava-cache.test.mjs` | `make test-strava-cache` | 19 tests on the activity cache: TTLs, per-athlete indexing, unusable storage |
 | `tests/strava-client.test.mjs` | `make test-strava-client` | 11 tests on the two ways the Strava client fails quietly: an unconfigured build, and concurrent token refreshes |
-| `tests/firestore.rules.test.mjs` | `make test-rules` | 59 tests on the owner boundary and document validation, both integrations included |
+| `tests/firestore.rules.test.mjs` | `make test-rules` | 65 tests on the owner boundary and document validation, both integrations included |
 | `tests/service-worker.test.mjs` | `make test-sw` | 19 assertions that the built worker can serve every route offline |
 
 `tests/strava-client.test.mjs` is the first suite to cover a module with a
@@ -393,7 +420,7 @@ artefact including its generated precache manifest. The offline and percentage
 suites import `src/lib/offline.ts` and `src/lib/percentages.ts` directly via Node's
 built-in type stripping — neither module has imports of its own, which is what
 makes them testable without a bundler. `share-card.ts`, `barbell.ts`,
-`day-order.ts` and `stats.ts` are kept import-free for the same reason, and `octiv/mapping.ts`
+`day-order.ts`, `locations.ts` and `stats.ts` are kept import-free for the same reason, and `octiv/mapping.ts`
 imports types only, which are erased before Node ever sees them.
 
 ---

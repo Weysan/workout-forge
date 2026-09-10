@@ -109,12 +109,10 @@ function Log() {
       entries: scored.map((workout) => ({
         title: workout.title,
         detail: `${workoutTypeLabel(workout.type)} · ${workout.rxOrScaled}`,
-        value: formatScore(
-          workout.scoreType,
-          workout.scoreValue,
-          unitSystem,
-          workout.reps,
-        ),
+        value: formatScore(workout.scoreType, workout.scoreValue, unitSystem, {
+          reps: workout.reps,
+          durationSeconds: workout.durationSeconds,
+        }),
         isPR: workout.isPR,
       })),
     });

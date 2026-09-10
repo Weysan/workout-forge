@@ -20,6 +20,7 @@ import {
 
 import { assignOrder, sortDayOrder } from "@/lib/day-order";
 import { getDb } from "@/lib/firebase";
+import { normalizeLocation } from "@/lib/locations";
 import { acceptWrite, readWithCacheFallback } from "@/lib/offline";
 import type { Workout, WorkoutInput } from "@/lib/types";
 import { clearDayMark, fetchDayMark } from "./day-marks";
@@ -43,11 +44,16 @@ function toWorkout(snapshot: QueryDocumentSnapshot<DocumentData>): Workout {
     isPR: Boolean(data.isPR),
     linkedBenchmarkId: data.linkedBenchmarkId ?? null,
     reps: typeof data.reps === "number" ? data.reps : null,
+    // Set only on distance sessions, and optional even there.
+    durationSeconds:
+      typeof data.durationSeconds === "number" ? data.durationSeconds : null,
     // Absent on every day nobody has arranged, which is most of them.
     order: typeof data.order === "number" ? data.order : null,
     // Absent on everything logged by hand, which is the common case.
     octivExerciseId:
       typeof data.octivExerciseId === "string" ? data.octivExerciseId : null,
+    // Absent on imports, and on everything logged before places existed.
+    location: normalizeLocation(data.location),
     notes: data.notes ?? "",
     createdAt: data.createdAt ?? null,
   };

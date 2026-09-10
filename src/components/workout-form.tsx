@@ -21,7 +21,12 @@ import {
   type ScoreDraft,
 } from "@/lib/score-draft";
 import { scoreTypeLabel } from "@/lib/scoring";
-import { useUnitSystem } from "@/lib/hooks/use-profile";
+import { normalizeLocation } from "@/lib/locations";
+import {
+  useLocations,
+  useRememberLocation,
+  useUnitSystem,
+} from "@/lib/hooks/use-profile";
 import { useCreateWorkout, useUpdateWorkout } from "@/lib/hooks/use-workouts";
 import { getBenchmark, SCORE_TYPE_OPTIONS, WORKOUT_TYPE_OPTIONS } from "@/constants/seedData";
 import type {
@@ -33,6 +38,7 @@ import type {
   WorkoutType,
 } from "@/lib/types";
 import { BenchmarkPicker } from "@/components/benchmark-picker";
+import { LocationInput } from "@/components/location-input";
 import { ScoreInput } from "@/components/score-input";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
@@ -78,6 +84,8 @@ export function WorkoutForm({
 }) {
   const router = useRouter();
   const unitSystem = useUnitSystem();
+  const locations = useLocations();
+  const rememberLocation = useRememberLocation();
   const createWorkout = useCreateWorkout();
   const updateWorkout = useUpdateWorkout();
 
@@ -89,8 +97,18 @@ export function WorkoutForm({
   const [scoreType, setScoreType] = useState<ScoreType>(
     workout?.scoreType ?? "time_seconds",
   );
+  /**
+   * Whether the athlete has picked a score type themselves.
+   *
+   * Once they have, `applyType` stops second-guessing it: someone who chose to
+   * score their run by time did so on purpose, and having the format dropdown
+   * quietly undo that a moment later is the kind of thing that gets a form
+   * abandoned.
+   */
+  const [scoreTypeTouched, setScoreTypeTouched] = useState(false);
   const [description, setDescription] = useState(workout?.description ?? "");
   const [notes, setNotes] = useState(workout?.notes ?? "");
+  const [location, setLocation] = useState(workout?.location ?? "");
   const [rxOrScaled, setRxOrScaled] = useState<RxOrScaled>(
     workout?.rxOrScaled ?? "RX",
   );
@@ -144,6 +162,22 @@ export function WorkoutForm({
     );
   }
 
+  /**
+   * Picking a format nudges the score type to the one that format is almost
+   * always measured by — `Run` to distance, and nothing else, because every
+   * other format here already defaults sensibly.
+   *
+   * Only on a new entry, and only while the score type has not been touched:
+   * an existing session keeps the score type it was recorded with, for the same
+   * reason the quick-log form does. `applyBenchmark` above is the other half of
+   * this — a benchmark states its own score type and always wins.
+   */
+  function applyType(next: WorkoutType) {
+    setType(next);
+    if (mode !== "create" || benchmark || scoreTypeTouched) return;
+    if (next === "Run") setScoreType("distance_metres");
+  }
+
   function clearBenchmark() {
     setBenchmark(null);
   }
@@ -157,6 +191,10 @@ export function WorkoutForm({
       toast.error("Give this workout a name");
       return;
     }
+
+    // Held once, because it is written in two places — the workout and the
+    // remembered list — and they must not disagree about spacing.
+    const place = normalizeLocation(location);
 
     const input: WorkoutInput = {
       date: dateKey,
@@ -178,6 +216,8 @@ export function WorkoutForm({
       isPR: scored && markAsPR,
       linkedBenchmarkId: benchmark?.id ?? null,
       reps: isPlanned ? null : resolved.reps,
+      durationSeconds: isPlanned ? null : resolved.durationSeconds,
+      location: place,
       notes: notes.trim(),
     };
 
@@ -211,6 +251,11 @@ export function WorkoutForm({
                   : undefined,
         });
       }
+
+      // After the save, and never awaited: the workout is already stored, the
+      // navigation below should not wait on a convenience, and a failure here is
+      // deliberately invisible (see useRememberLocation).
+      if (place) rememberLocation.mutate(place);
 
       router.push("/");
     } catch {
@@ -315,7 +360,7 @@ export function WorkoutForm({
               <Label htmlFor="type">Format</Label>
               <Select
                 value={type}
-                onValueChange={(value) => setType(value as WorkoutType)}
+                onValueChange={(value) => applyType(value as WorkoutType)}
               >
                 <SelectTrigger id="type">
                   <SelectValue />
@@ -360,7 +405,10 @@ export function WorkoutForm({
             </Label>
             <Select
               value={scoreType}
-              onValueChange={(value) => setScoreType(value as ScoreType)}
+              onValueChange={(value) => {
+                setScoreType(value as ScoreType);
+                setScoreTypeTouched(true);
+              }}
             >
               <SelectTrigger id="scoreType">
                 <SelectValue />
@@ -477,6 +525,12 @@ export function WorkoutForm({
               </span>
             </label>
           )}
+
+          <LocationInput
+            value={location}
+            onChange={setLocation}
+            locations={locations}
+          />
 
           <div className="space-y-2">
             <Label htmlFor="notes">Notes</Label>

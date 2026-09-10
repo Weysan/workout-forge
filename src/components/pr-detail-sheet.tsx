@@ -341,7 +341,10 @@ function AttemptRow({
                 attempt.scoreType,
                 attempt.scoreValue,
                 unitSystem,
-                attempt.reps,
+                {
+                  reps: attempt.reps,
+                  durationSeconds: attempt.durationSeconds,
+                },
               )
             : "—"}
         </span>

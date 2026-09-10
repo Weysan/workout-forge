@@ -1,5 +1,10 @@
 import type { ScoreType, UnitSystem } from "./types";
-import { formatWeight } from "./units";
+import {
+  distanceUnit,
+  formatDistance,
+  formatWeight,
+  metresToMiles,
+} from "./units";
 
 /**
  * Score normalisation.
@@ -12,7 +17,12 @@ import { formatWeight } from "./units";
  *   reps          repetitions              higher is better
  *   weight        kilograms                higher is better
  *   rounds_reps   packed, see below        higher is better
+ *   distance_metres  metres covered        higher is better
  *   pass_fail     1 completed / 0 failed   higher is better
+ *
+ * `distance_metres` is the one score with a second number beside it — the time
+ * it took, in `Workout.durationSeconds`. Only the metres are ranked; see the
+ * ScoreType doc for why the two are not packed together.
  */
 
 /**
@@ -163,13 +173,53 @@ export function formatDuration(totalSeconds: number): string {
     : `${pad(minutes)}:${pad(seconds)}`;
 }
 
+// --- Pace ----------------------------------------------------------------
+
+/**
+ * Above this, the athlete was walking, stopped, or forgot to end the activity,
+ * and a "pace" is noise rather than information. Per km or per mile alike — the
+ * threshold is loose enough that the difference does not matter.
+ */
+const MAX_PACE_SECONDS = 20 * 60;
+
+/**
+ * Time per kilometre or per mile — `"5:15 /km"` — or `null` when it would not
+ * mean anything.
+ *
+ * Derived on every render rather than stored, so a distance corrected in the
+ * form cannot leave a stale pace behind it.
+ */
+export function formatPace(
+  metres: number,
+  seconds: number,
+  system: UnitSystem,
+): string | null {
+  if (metres <= 0 || seconds <= 0) return null;
+
+  const units = system === "metric" ? metres / 1000 : metresToMiles(metres);
+  if (units <= 0) return null;
+
+  const perUnit = seconds / units;
+  if (perUnit > MAX_PACE_SECONDS) return null;
+
+  return `${formatDuration(Math.round(perUnit))} /${distanceUnit(system)}`;
+}
+
 // --- Display -------------------------------------------------------------
 
+/**
+ * The score as it is read.
+ *
+ * The trailing `extra` carries the second number a score type may have beside
+ * its `scoreValue` — reps for a lift, a duration for a distance. An options
+ * object rather than more positional parameters, because a third one would make
+ * every call site a row of anonymous arguments.
+ */
 export function formatScore(
   scoreType: ScoreType,
   scoreValue: number,
   unitSystem: UnitSystem,
-  reps?: number | null,
+  extra?: { reps?: number | null; durationSeconds?: number | null },
 ): string {
   switch (scoreType) {
     case "time_seconds":
@@ -185,6 +235,7 @@ export function formatScore(
 
     case "weight": {
       const load = formatWeight(scoreValue, unitSystem);
+      const reps = extra?.reps;
       return reps && reps > 1 ? `${load} × ${reps}` : load;
     }
 
@@ -192,6 +243,20 @@ export function formatScore(
       const { rounds, partialReps } = decodeRoundsReps(scoreValue);
       const roundLabel = `${rounds} ${rounds === 1 ? "rnd" : "rnds"}`;
       return partialReps > 0 ? `${roundLabel} + ${partialReps} reps` : roundLabel;
+    }
+
+    case "distance_metres": {
+      const distance = formatDistance(scoreValue, unitSystem);
+      const seconds = extra?.durationSeconds;
+      // A distance logged without a time is a complete result, not a broken
+      // one — see `Workout.durationSeconds` — so it reads as the distance alone.
+      if (!seconds || seconds <= 0) return distance;
+
+      const pace = formatPace(scoreValue, seconds, unitSystem);
+      const time = formatDuration(seconds);
+      return pace === null
+        ? `${distance} · ${time}`
+        : `${distance} · ${time} (${pace})`;
     }
 
     case "pass_fail":
@@ -210,6 +275,8 @@ export function scoreTypeLabel(scoreType: ScoreType): string {
       return "Load";
     case "rounds_reps":
       return "Rounds + reps";
+    case "distance_metres":
+      return "Distance";
     case "pass_fail":
       return "Completion";
   }

@@ -162,13 +162,45 @@ export function workoutTypeFor(sportType: string): WorkoutType {
 }
 
 /**
- * Everything imported from Strava is timed.
+ * What an activity with no distance is scored on: the clock.
  *
- * Distance is the more natural measure for some of these, but FORGE has no
- * distance score type, and time is both true and comparable. The distance is
- * written into the description, where it is read rather than ranked.
+ * Also what a *race* is scored on, even though it has one — see `scoreTypeFor`.
  */
 export const STRAVA_SCORE_TYPE: ScoreType = "time_seconds";
+
+/**
+ * How this activity should be measured.
+ *
+ * A run or a ride is really two numbers, and `distance_metres` carries both:
+ * the metres rank, the duration rides along, and the card works the pace out
+ * from them. So anything Strava measured a distance for is scored that way.
+ *
+ * **Except a race.** A benchmark-linked session is compared against the
+ * benchmark's own score type by the record recompute — `syncRecordForBenchmark`
+ * reads `benchmark.scoreType` and hands the raw `scoreValue` to `beatsRecord` —
+ * and every running benchmark in the library is scored on time. Import a 5 km
+ * race as metres and the record table would compare 5000 against a stack of
+ * seconds, with "lower is better" applied to it: the slowest 5 km on record
+ * would win. The distance is prescribed for those anyway, which is what makes
+ * the time the interesting half.
+ *
+ * A treadmill run with no GPS falls through to time as well — the only honest
+ * answer when there is no distance to record.
+ */
+export function scoreTypeFor(
+  activity: StravaActivity,
+  benchmarkId: string | null,
+): ScoreType {
+  if (benchmarkId !== null) return STRAVA_SCORE_TYPE;
+  return distanceOf(activity) > 0 ? "distance_metres" : STRAVA_SCORE_TYPE;
+}
+
+/** Metres covered, rounded, or 0 when Strava measured none. */
+export function distanceOf(activity: StravaActivity): number {
+  const distance = activity.distance;
+  if (typeof distance !== "number" || distance <= 0) return 0;
+  return Math.round(distance);
+}
 
 /** `4521` → `"01:15:21"`, `275` → `"04:35"`. */
 export function formatStravaDuration(totalSeconds: number): string {
@@ -186,8 +218,36 @@ export function formatStravaDuration(totalSeconds: number): string {
 
 /** `5012.4` → `"5.01 km"`. Metres in, kilometres out, because that is how it is talked about. */
 function formatDistance(metres: number): string {
+  if (metres < 1000) return `${Math.round(metres)} m`;
   const km = metres / 1000;
   return `${km.toFixed(2)} km`;
+}
+
+/**
+ * The `scoreDisplay` for a distance import — `"8.02 km · 42:10 (5:15 /km)"`.
+ *
+ * Deliberately a copy of what `formatScore("distance_metres", …)` produces in
+ * metric, rather than a call to it: this module imports types only, which is
+ * what lets `tests/strava.test.mjs` run the real implementation under Node's
+ * type stripping. `formatStravaDuration` above duplicates `formatDuration` for
+ * exactly the same reason.
+ *
+ * Metric, like every other stored value. `scoreDisplay` is a convenience copy —
+ * the views re-format from `scoreValue` at render time, so an athlete on
+ * imperial still reads miles.
+ */
+function formatDistanceScore(metres: number, seconds: number): string {
+  const distance = formatDistance(metres);
+  if (seconds <= 0) return distance;
+
+  const time = formatStravaDuration(seconds);
+  const secondsPerKm = seconds / (metres / 1000);
+  // The same threshold `describe` uses below, and `formatPace` in lib/scoring.
+  if (secondsPerKm <= 0 || secondsPerKm >= 20 * 60) {
+    return `${distance} · ${time}`;
+  }
+
+  return `${distance} · ${time} (${formatStravaDuration(Math.round(secondsPerKm))} /km)`;
 }
 
 /**
@@ -198,11 +258,21 @@ function formatDistance(metres: number): string {
  * than taken from `average_speed`, because a pace per kilometre is what a runner
  * reads and metres per second is not.
  */
-function describe(activity: StravaActivity, seconds: number): string {
+function describe(
+  activity: StravaActivity,
+  seconds: number,
+  /**
+   * False when the distance became the score. The description holds what the
+   * score does not say, so repeating "8.02 km" under a card already headed
+   * "8.02 km · 42:10 (5:15 /km)" is noise.
+   */
+  includeDistance: boolean,
+): string {
   const lines: string[] = [];
 
   const distance = activity.distance;
-  const hasDistance = typeof distance === "number" && distance > 0;
+  const hasDistance =
+    includeDistance && typeof distance === "number" && distance > 0;
 
   if (hasDistance) {
     lines.push(`Distance: ${formatDistance(distance)}`);
@@ -265,24 +335,37 @@ export function activitiesToWorkoutInputs(
     .map((activity) => {
       const sportType = sportTypeOf(activity);
       const seconds = durationOf(activity);
+      const benchmarkId = benchmarkIdFor(activity, sportType);
+      const scoreType = scoreTypeFor(activity, benchmarkId);
+      const metres = distanceOf(activity);
+
+      const scoredOnDistance = scoreType === "distance_metres";
 
       return {
         date: dateKey,
         title: titleFor(activity, sportType),
         type: workoutTypeFor(sportType),
-        description: clamp(describe(activity, seconds), STRAVA_DESCRIPTION_MAX),
-        scoreType: STRAVA_SCORE_TYPE,
+        description: clamp(
+          describe(activity, seconds, !scoredOnDistance),
+          STRAVA_DESCRIPTION_MAX,
+        ),
+        scoreType,
         // The session is done and measured. This is the whole difference from an
         // Octiv import, which arrives with `null` here.
-        scoreValue: seconds,
-        scoreDisplay: formatStravaDuration(seconds),
+        scoreValue: scoredOnDistance ? metres : seconds,
+        scoreDisplay: scoredOnDistance
+          ? formatDistanceScore(metres, seconds)
+          : formatStravaDuration(seconds),
         // Nothing about a recorded activity says whether it was scaled.
         rxOrScaled: "RX" as const,
         // Set by the record recompute if this turns out to be a best — see
         // firestore/records.ts. Never asserted here.
         isPR: false,
-        linkedBenchmarkId: benchmarkIdFor(activity, sportType),
+        linkedBenchmarkId: benchmarkId,
         reps: null,
+        // The other half of a distance score. Never set on a time score, where
+        // the duration *is* the score.
+        durationSeconds: scoredOnDistance ? seconds : null,
         stravaActivityId: String(activity.id),
         notes: "",
       };
