@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Inter, Inter_Tight } from "next/font/google";
 
+import { SEASON_BOOT_SCRIPT } from "@/lib/season-boot";
 import { Providers } from "./providers";
 import "./globals.css";
 
@@ -61,7 +62,17 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" className={`${inter.variable} ${interTight.variable}`}>
+    // suppressHydrationWarning: the boot script below adds data-season to <html>
+    // before React hydrates, which React would otherwise report as a mismatch.
+    <html
+      lang="en"
+      className={`${inter.variable} ${interTight.variable}`}
+      suppressHydrationWarning
+    >
+      <head>
+        {/* Sets the season before first paint — see lib/season-boot.ts. */}
+        <script dangerouslySetInnerHTML={{ __html: SEASON_BOOT_SCRIPT }} />
+      </head>
       <body>
         <Providers>{children}</Providers>
       </body>

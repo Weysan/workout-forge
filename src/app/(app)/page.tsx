@@ -13,6 +13,7 @@ import {
 } from "date-fns";
 import {
   ArrowUpDownIcon,
+  FlameIcon,
   PlusIcon,
   Share2Icon,
   TrophyIcon,
@@ -28,6 +29,8 @@ import {
   useWorkoutsByDate,
 } from "@/lib/hooks/use-workouts";
 import { useProfile, useUnitSystem } from "@/lib/hooks/use-profile";
+import { useDayMark } from "@/lib/hooks/use-day-marks";
+import { useTrainingStats } from "@/lib/hooks/use-stats";
 import type { Workout } from "@/lib/types";
 import { workoutTypeLabel } from "@/constants/seedData";
 import { DateStrip } from "@/components/date-strip";
@@ -68,6 +71,11 @@ function Log() {
   const unitSystem = useUnitSystem();
   const { data: workouts, isPending } = useWorkoutsByDate(dateKey);
   const deleteWorkout = useDeleteWorkout(dateKey);
+  const { data: dayMark } = useDayMark(dateKey);
+  // The same streak the profile shows — computed from the cached range queries,
+  // so it costs no extra reads.
+  const { data: stats } = useTrainingStats();
+  const streak = stats?.logStreak ?? 0;
 
   const [reorderOpen, setReorderOpen] = useState(false);
   const [shareDayOpen, setShareDayOpen] = useState(false);
@@ -153,16 +161,36 @@ function Log() {
 
   return (
     <div className="space-y-5">
-      <section className="pt-5">
-        <h1 className="font-display text-2xl leading-tight font-extrabold">
-          {firstName ? `Let's go, ${firstName}.` : "Training log"}
-        </h1>
-        <p className="text-muted-foreground mt-1 text-sm">
-          <span className="text-foreground font-semibold tabular">
-            {weekDates?.length ?? 0}
-          </span>{" "}
-          {weekDates?.length === 1 ? "day" : "days"} trained this week
-        </p>
+      <section className="flex items-start justify-between gap-3 pt-5">
+        <div className="min-w-0">
+          <h1 className="font-display text-2xl leading-tight font-extrabold">
+            {firstName ? `Let's go, ${firstName}.` : "Training log"}
+          </h1>
+          <p className="text-muted-foreground mt-1 text-sm">
+            <span className="text-foreground font-semibold tabular">
+              {weekDates?.length ?? 0}
+            </span>{" "}
+            {weekDates?.length === 1 ? "day" : "days"} trained this week
+          </p>
+        </div>
+
+        {/* The log streak: consecutive days accounted for — trained, rested or
+            injured — counting back from today (see logStreak in lib/stats.ts).
+            Hidden at zero: a "0" badge greets a new user with a failure. */}
+        {streak > 0 && (
+          <div
+            className="border-primary/40 bg-primary/10 flex shrink-0 items-center gap-2 rounded-2xl border px-3 py-2"
+            aria-label={`${streak}-day streak`}
+          >
+            <FlameIcon className="streak-flame text-primary size-6" aria-hidden />
+            <div className="leading-none" aria-hidden>
+              <div className="font-display tabular text-xl font-extrabold">{streak}</div>
+              <div className="text-muted-foreground mt-0.5 text-[10px] font-bold tracking-widest uppercase">
+                day streak
+              </div>
+            </div>
+          </div>
+        )}
       </section>
 
       <DateStrip selected={selected} onSelect={setSelected} />
@@ -227,7 +255,12 @@ function Log() {
             ))}
           </div>
         ) : (
-          <EmptyDay dateLabel={relativeLabel} isFuture={isFuture} dateKey={dateKey} />
+          <EmptyDay
+            dateLabel={relativeLabel}
+            isFuture={isFuture}
+            dateKey={dateKey}
+            status={dayMark?.status}
+          />
         )}
 
         {/* Below the day's sessions: what was done comes before what the box

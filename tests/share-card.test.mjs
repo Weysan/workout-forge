@@ -383,3 +383,4 @@ describe("shareCaption", () => {
     assert.ok(caption.includes(url), "the caption must end with the app URL");
   });
 });
+

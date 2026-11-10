@@ -14,6 +14,8 @@ import {
 import { CalendarIcon, ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
 
 import { cn, toDateKey } from "@/lib/utils";
+import { holidayOn, seasonOn, type Season } from "@/lib/season";
+import { useSeasonOverride } from "@/lib/season-context";
 import { useDayMarksInRange } from "@/lib/hooks/use-day-marks";
 import { useWorkoutDatesInRange } from "@/lib/hooks/use-workouts";
 import type { DayStatus } from "@/lib/types";
@@ -32,6 +34,29 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
  * unscored-workout model exists for. The month picker still stops a year out, so
  * a mis-swipe cannot land the user in 2031 with no idea how they got there.
  */
+const SEASON_ICON: Record<Season, string> = {
+  halloween: "🎃",
+  christmas: "❄️",
+};
+
+/**
+ * Holiday markers on the month picker's days, as DayPicker modifiers.
+ *
+ * The class strings are written out in full so Tailwind can see them.
+ */
+const CALENDAR_HOLIDAY = {
+  modifiers: {
+    pumpkin: (day: Date) => holidayOn(day)?.emoji === "🎃",
+    tree: (day: Date) => holidayOn(day)?.emoji === "🎄",
+    fireworks: (day: Date) => holidayOn(day)?.emoji === "🎆",
+  },
+  modifiersClassNames: {
+    pumpkin: "[&>button]:relative [&>button]:after:absolute [&>button]:after:-top-0.5 [&>button]:after:right-0 [&>button]:after:text-[10px] [&>button]:after:content-['🎃']",
+    tree: "[&>button]:relative [&>button]:after:absolute [&>button]:after:-top-0.5 [&>button]:after:right-0 [&>button]:after:text-[10px] [&>button]:after:content-['🎄']",
+    fireworks: "[&>button]:relative [&>button]:after:absolute [&>button]:after:-top-0.5 [&>button]:after:right-0 [&>button]:after:text-[10px] [&>button]:after:content-['🎆']",
+  },
+};
+
 export function DateStrip({
   selected,
   onSelect,
@@ -75,6 +100,13 @@ export function DateStrip({
     [dayMarks],
   );
 
+  // The season follows the week on screen, not today: paging back into October
+  // fades the whole app to Halloween, and forward into November to Christmas.
+  // Thursday decides, so a week that straddles 31 October / 1 November takes
+  // the season most of its days are in.
+  const season = seasonOn(addDays(weekStart, 3));
+  useSeasonOverride(season);
+
   function jumpTo(date: Date) {
     setWeekStart(startOfWeek(date, { weekStartsOn: 1 }));
     onSelect(date);
@@ -97,6 +129,11 @@ export function DateStrip({
             <Button variant="ghost" size="sm" className="gap-2 font-display tracking-wide uppercase">
               <CalendarIcon className="size-4" />
               {format(weekStart, "MMMM yyyy")}
+              {season && (
+                <span aria-hidden className="text-sm leading-none">
+                  {SEASON_ICON[season]}
+                </span>
+              )}
             </Button>
           </PopoverTrigger>
           <PopoverContent align="center" className="w-auto p-2">
@@ -112,6 +149,8 @@ export function DateStrip({
               }}
               // Planning ahead is fine; jumping years ahead never is.
               disabled={{ after: addYears(new Date(), 1) }}
+              modifiers={CALENDAR_HOLIDAY.modifiers}
+              modifiersClassNames={CALENDAR_HOLIDAY.modifiersClassNames}
             />
           </PopoverContent>
         </Popover>
@@ -130,6 +169,7 @@ export function DateStrip({
         {days.map((day) => {
           const key = toDateKey(day);
           const isSelected = key === toDateKey(selected);
+          const holiday = holidayOn(day);
           const dot = dotClass(
             activeSet.has(key),
             markByDate.get(key),
@@ -142,7 +182,11 @@ export function DateStrip({
               type="button"
               onClick={() => onSelect(day)}
               aria-current={isSelected ? "date" : undefined}
-              aria-label={format(day, "EEEE d MMMM")}
+              aria-label={
+                holiday
+                  ? `${format(day, "EEEE d MMMM")}, ${holiday.name}`
+                  : format(day, "EEEE d MMMM")
+              }
               className={cn(
                 "group relative flex min-h-16 flex-col items-center justify-center gap-1 rounded-xl border transition-all",
                 isSelected
@@ -161,6 +205,15 @@ export function DateStrip({
               <span className="tabular text-lg leading-none font-bold">
                 {format(day, "d")}
               </span>
+
+              {holiday && (
+                <span
+                  aria-hidden
+                  className="pointer-events-none absolute -top-1.5 -right-1 text-sm leading-none"
+                >
+                  {holiday.emoji}
+                </span>
+              )}
 
               {/* Today gets a ring; accounted-for days get a dot. */}
               {isToday(day) && !isSelected && (

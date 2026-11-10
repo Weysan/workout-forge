@@ -21,6 +21,7 @@
     "test:stats": "node --test tests/stats.test.mjs",
     "test:barbell": "node --test tests/barbell.test.mjs",
     "test:share": "node --test tests/share-card.test.mjs",
+    "test:season": "node --test tests/season.test.mjs",
     "test:day-order": "node --test tests/day-order.test.mjs",
     "test:locations": "node --test tests/locations.test.mjs",
     "test:scoring": "node --test tests/scoring.test.mjs",

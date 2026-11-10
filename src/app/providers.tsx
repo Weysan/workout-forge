@@ -5,9 +5,11 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { AuthProvider } from "@/lib/auth-context";
+import { SeasonProvider } from "@/lib/season-context";
 import { setWriteRejectionHandler } from "@/lib/offline";
 import { Toaster } from "@/components/ui/sonner";
 import { ServiceWorkerRegistrar } from "@/components/service-worker-registrar";
+import { SeasonalBackdrop } from "@/components/seasonal-backdrop";
 
 export function Providers({ children }: { children: ReactNode }) {
   // Created in state, not at module scope: a module-level client would be shared
@@ -71,9 +73,12 @@ export function Providers({ children }: { children: ReactNode }) {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        {children}
-        <Toaster />
-        <ServiceWorkerRegistrar />
+        <SeasonProvider>
+          <SeasonalBackdrop />
+          {children}
+          <Toaster />
+          <ServiceWorkerRegistrar />
+        </SeasonProvider>
       </AuthProvider>
     </QueryClientProvider>
   );

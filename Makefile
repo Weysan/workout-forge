@@ -102,7 +102,7 @@ shell: ## Open a shell inside the running web container
 check: typecheck lint build test ## Run every CI gate locally
 
 .PHONY: test
-test: test-barbell test-offline test-percentages test-stats test-share test-day-order test-locations test-scoring test-octiv test-octiv-cache test-strava test-strava-cache test-strava-client test-rules test-sw ## Run all tests
+test: test-barbell test-offline test-percentages test-stats test-share test-season test-day-order test-locations test-scoring test-octiv test-octiv-cache test-strava test-strava-cache test-strava-client test-rules test-sw ## Run all tests
 
 .PHONY: test-barbell
 test-barbell: ## Barbell plate loading and warm-up ladders
@@ -123,6 +123,10 @@ test-stats: ## Log streak, weekly averages and injured-day counts
 .PHONY: test-share
 test-share: ## Share-card content, clamping and filenames
 	npm run test:share
+
+.PHONY: test-season
+test-season: ## Festive season windows and holiday markers
+	npm run test:season
 
 .PHONY: test-day-order
 test-day-order: ## Ordering of a day's sessions (sort, nudge, renumber)

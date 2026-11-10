@@ -50,6 +50,265 @@
   --radius: 0.875rem;
 }
 
+/* ==========================================================================
+   Seasons
+   ==========================================================================
+   October dresses the app for Halloween, 1 November – 6 January for Christmas
+   (lib/season.ts owns the dates). The palettes mirror the seasonal share cards
+   in lib/share-image.ts — change one, change the other.
+
+   The season is an attribute on <html>, set before first paint by the script
+   in app/layout.tsx and kept current by SeasonProvider (lib/season-context).
+   ========================================================================== */
+
+/* Registering the tokens as <color> is what lets them *transition*: an
+   unregistered custom property is a string and can only snap. Everything that
+   reads them — Tailwind utilities, color-mix(), gradients — then fades with
+   them, from a single transition on <html>. */
+@property --background { syntax: "<color>"; inherits: true; initial-value: #0b1120; }
+@property --foreground { syntax: "<color>"; inherits: true; initial-value: #f1f5f9; }
+@property --card { syntax: "<color>"; inherits: true; initial-value: #111c31; }
+@property --card-foreground { syntax: "<color>"; inherits: true; initial-value: #f1f5f9; }
+@property --elevated { syntax: "<color>"; inherits: true; initial-value: #16233c; }
+@property --popover { syntax: "<color>"; inherits: true; initial-value: #111c31; }
+@property --popover-foreground { syntax: "<color>"; inherits: true; initial-value: #f1f5f9; }
+@property --primary { syntax: "<color>"; inherits: true; initial-value: #10b981; }
+@property --primary-foreground { syntax: "<color>"; inherits: true; initial-value: #03150e; }
+@property --accent { syntax: "<color>"; inherits: true; initial-value: #06b6d4; }
+@property --accent-foreground { syntax: "<color>"; inherits: true; initial-value: #03151a; }
+@property --secondary { syntax: "<color>"; inherits: true; initial-value: #1b2942; }
+@property --secondary-foreground { syntax: "<color>"; inherits: true; initial-value: #e2e8f0; }
+@property --muted { syntax: "<color>"; inherits: true; initial-value: #16233c; }
+@property --muted-foreground { syntax: "<color>"; inherits: true; initial-value: #94a3b8; }
+@property --border { syntax: "<color>"; inherits: true; initial-value: #1e2d48; }
+@property --input { syntax: "<color>"; inherits: true; initial-value: #1b2942; }
+@property --ring { syntax: "<color>"; inherits: true; initial-value: #10b981; }
+
+:root {
+  transition-property:
+    --background, --foreground, --card, --card-foreground, --elevated,
+    --popover, --popover-foreground, --primary, --primary-foreground, --accent,
+    --accent-foreground, --secondary, --secondary-foreground, --muted,
+    --muted-foreground, --border, --input, --ring;
+  transition-duration: 1.2s;
+  transition-timing-function: ease;
+}
+
+/* Deep wine ground, gold brand, warm white type. Gold rather than red for the
+   primary: red already means "injured" on the date strip. */
+:root[data-season="christmas"] {
+  --background: #240810;
+  --foreground: #fff8ef;
+  --card: #3a1018;
+  --card-foreground: #fff8ef;
+  --elevated: #47151f;
+  --popover: #3a1018;
+  --popover-foreground: #fff8ef;
+  --primary: #f6c453;
+  --primary-foreground: #2a0a10;
+  --accent: #fff1c9;
+  --accent-foreground: #2a0a10;
+  --secondary: #47151f;
+  --secondary-foreground: #fbe9e4;
+  --muted: #47151f;
+  --muted-foreground: #e5bfb8;
+  --border: #5e2531;
+  --input: #47151f;
+  --ring: #f6c453;
+}
+
+/* Aubergine night, pumpkin brand, amber records. */
+:root[data-season="halloween"] {
+  --background: #120a1c;
+  --foreground: #f6f1ff;
+  --card: #1d1230;
+  --card-foreground: #f6f1ff;
+  --elevated: #261840;
+  --popover: #1d1230;
+  --popover-foreground: #f6f1ff;
+  --primary: #f97316;
+  --primary-foreground: #1a0a02;
+  --accent: #fbbf24;
+  --accent-foreground: #1a0a02;
+  --secondary: #261840;
+  --secondary-foreground: #ece4fb;
+  --muted: #261840;
+  --muted-foreground: #b9a8d0;
+  --border: #30214a;
+  --input: #261840;
+  --ring: #f97316;
+}
+
+/* --- Decoration layers (components/seasonal-backdrop.tsx) ---------------
+   Fixed behind everything. A layer fades in when its season starts and out
+   when it ends; once hidden, its animations pause so a finished season costs
+   nothing. */
+.season-layer {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 1.4s ease, visibility 0s linear 1.4s;
+}
+.season-layer[data-active] {
+  opacity: 1;
+  visibility: visible;
+  transition: opacity 1.4s ease;
+}
+.season-layer:not([data-active]) * {
+  animation-play-state: paused !important;
+}
+
+/* Snow: each flake falls from above the top edge to below the bottom one,
+   swaying on an inner element so the two motions compose. */
+.season-flake {
+  position: absolute;
+  top: -5vh;
+  animation: season-fall var(--fall) linear var(--delay) infinite;
+  will-change: transform;
+}
+.season-flake > span {
+  display: block;
+  border-radius: 9999px;
+  background: #fff;
+  animation: season-sway var(--sway) ease-in-out var(--delay) infinite alternate;
+}
+@keyframes season-fall {
+  to { transform: translateY(112vh); }
+}
+@keyframes season-sway {
+  from { transform: translateX(calc(var(--drift) * -1)); }
+  to { transform: translateX(var(--drift)); }
+}
+
+/* Stars twinkle; bats cross the sky now and then, flapping. */
+.season-star {
+  position: absolute;
+  border-radius: 9999px;
+  background: #f6f1ff;
+  animation: season-twinkle var(--twinkle) ease-in-out var(--delay) infinite alternate;
+}
+@keyframes season-twinkle {
+  from { opacity: 0.15; }
+  to { opacity: 0.85; }
+}
+
+.season-bat {
+  position: absolute;
+  left: 0;
+  animation: season-fly var(--fly) linear var(--delay) infinite;
+  will-change: transform;
+}
+.season-bat > svg {
+  animation: season-flap 0.35s ease-in-out infinite alternate;
+  transform-origin: center;
+}
+@keyframes season-fly {
+  0% { transform: translate(110vw, 0); }
+  50% { transform: translate(45vw, var(--dip)); }
+  100% { transform: translate(-20vw, 0); }
+}
+@keyframes season-flap {
+  from { transform: scaleY(1); }
+  to { transform: scaleY(0.45); }
+}
+
+.season-fog {
+  position: absolute;
+  inset-inline: -50%;
+  bottom: 0;
+  height: 40vh;
+  background: radial-gradient(ellipse 50% 60% at 50% 100%, rgba(167, 139, 250, 0.16), transparent 70%);
+  animation: season-drift 24s ease-in-out infinite alternate;
+}
+@keyframes season-drift {
+  from { transform: translateX(-12%); }
+  to { transform: translateX(12%); }
+}
+
+.season-moon {
+  animation: season-glow 6s ease-in-out infinite alternate;
+}
+@keyframes season-glow {
+  from { filter: drop-shadow(0 0 18px rgba(254, 240, 199, 0.35)); }
+  to { filter: drop-shadow(0 0 34px rgba(254, 240, 199, 0.55)); }
+}
+
+/* --- The athlete on rest / injury days (components/athlete-character) ----
+   Slow on purpose: a resting breath is about five seconds, and anything quicker
+   reads as panting rather than sleep. */
+.athlete-breathe {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+  animation: athlete-breathe 5s ease-in-out infinite;
+}
+@keyframes athlete-breathe {
+  0%, 100% { transform: scaleY(1); }
+  45% { transform: scaleY(1.09); }
+}
+
+.athlete-z {
+  opacity: 0;
+  animation: athlete-z 5s ease-out infinite;
+}
+.athlete-z-2 { animation-delay: 1.66s; }
+.athlete-z-3 { animation-delay: 3.33s; }
+@keyframes athlete-z {
+  0% { opacity: 0; transform: translate(0, 0); }
+  20% { opacity: 0.9; }
+  100% { opacity: 0; transform: translate(26px, -34px); }
+}
+
+.athlete-throb {
+  transform-box: view-box;
+  transform-origin: 170px 50px;
+  animation: athlete-throb 1.4s ease-out infinite;
+}
+@keyframes athlete-throb {
+  0% { opacity: 0.2; transform: scale(0.85); }
+  35% { opacity: 1; transform: scale(1.08); }
+  100% { opacity: 0.2; transform: scale(0.85); }
+}
+
+.athlete-sweat {
+  animation: athlete-sweat 3.2s ease-in infinite;
+}
+@keyframes athlete-sweat {
+  0%, 30% { opacity: 0; transform: translate(0, 0); }
+  45% { opacity: 1; }
+  100% { opacity: 0; transform: translate(-4px, 14px); }
+}
+
+/* The streak flame: a slow flicker, not a strobe. */
+.streak-flame {
+  transform-origin: 50% 90%;
+  animation: streak-flicker 2.4s ease-in-out infinite;
+}
+@keyframes streak-flicker {
+  0%, 100% { transform: scale(1) rotate(0deg); }
+  30% { transform: scale(1.08, 0.95) rotate(-3deg); }
+  60% { transform: scale(0.96, 1.06) rotate(2deg); }
+}
+
+/* Motion is decoration here, never information: with reduced motion the snow
+   and stars hold still where they are, and the bats stay home. */
+@media (prefers-reduced-motion: reduce) {
+  :root { transition-duration: 0s; }
+  .season-layer, .season-layer[data-active] { transition-duration: 0s; }
+  .season-layer * { animation: none !important; }
+  .season-flake { top: var(--rest); }
+  .season-bat { display: none; }
+  .athlete-breathe, .athlete-throb, .streak-flame { animation: none; }
+  /* Without motion the Zs and the sweat drop would never appear; show them still. */
+  .athlete-throb { opacity: 0.9; }
+  .athlete-z, .athlete-sweat { animation: none; opacity: 0.8; }
+  .athlete-z-2 { transform: translate(10px, -13px); }
+  .athlete-z-3 { transform: translate(20px, -26px); }
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -101,8 +360,11 @@
     -webkit-tap-highlight-color: transparent;
   }
 
+  /* No background on body: <html> paints it, which leaves room for the
+     seasonal decoration layer (z-index -1) between the two. A body background
+     would be painted over it. */
   body {
-    @apply bg-background text-foreground font-sans antialiased;
+    @apply text-foreground font-sans antialiased;
     /* Stops horizontal jitter when the date strip scrolls. */
     overscroll-behavior-y: contain;
   }

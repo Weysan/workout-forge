@@ -49,6 +49,25 @@ export type ShareFormat = keyof typeof SHARE_FORMATS;
 
 export const SHARE_FORMAT_ORDER = ["story", "post"] as const;
 
+// --- Themes --------------------------------------------------------------
+
+/**
+ * The backdrops a card can be drawn on.
+ *
+ * `classic` is the app itself — navy ground, emerald and cyan. The others are
+ * seasonal: they swap the palette and add decoration, but keep the layout, so a
+ * festive card is still recognisably the same poster. The painting lives in
+ * lib/share-image.ts, and when each season is offered in lib/season.ts — this
+ * is only which ones exist.
+ */
+export const SHARE_THEMES = {
+  classic: { label: "Classic" },
+  halloween: { label: "Halloween" },
+  christmas: { label: "Christmas" },
+} as const;
+
+export type ShareTheme = keyof typeof SHARE_THEMES;
+
 // --- The card ------------------------------------------------------------
 
 /**

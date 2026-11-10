@@ -20,8 +20,9 @@ import { cn, fromDateKey, todayKey } from "@/lib/utils";
 import { formatScore, isScored, scoreTypeLabel } from "@/lib/scoring";
 import { buildWorkoutCard } from "@/lib/share-card";
 import { useUnitSystem } from "@/lib/hooks/use-profile";
-import type { Workout } from "@/lib/types";
+import type { DayStatus, Workout } from "@/lib/types";
 import { workoutTypeLabel } from "@/constants/seedData";
+import { AthleteCharacter } from "@/components/athlete-character";
 import { ScoreSheet } from "@/components/score-sheet";
 import { ShareSheet } from "@/components/share-sheet";
 import { Badge } from "@/components/ui/badge";
@@ -297,25 +298,49 @@ export function EmptyDay({
   dateLabel,
   isFuture,
   dateKey,
+  status,
 }: {
   dateLabel: string;
   /** A day ahead is empty because it has not happened, not because it was missed. */
   isFuture: boolean;
   dateKey: string;
+  /**
+   * The day's rest/injury marker. When set, the athlete character takes the
+   * place of the icon and the "Nothing logged" heading: the day is not empty,
+   * it was spent recovering, and the screen should say so.
+   */
+  status?: DayStatus;
 }) {
+  const heading = `${isFuture ? "Nothing planned" : "Nothing logged"} ${dateLabel}`;
+
   return (
-    <div className="border-border/70 bg-card/40 flex flex-col items-center gap-4 rounded-2xl border border-dashed px-6 py-14 text-center">
-      <div className="bg-elevated grid size-14 place-items-center rounded-2xl">
-        {isFuture ? (
-          <CalendarPlusIcon className="text-muted-foreground size-6" />
-        ) : (
-          <FlameIcon className="text-muted-foreground size-6" />
-        )}
-      </div>
+    <div
+      className={cn(
+        "border-border/70 bg-card/40 flex flex-col items-center gap-4 rounded-2xl border border-dashed px-6 text-center",
+        status ? "pt-8 pb-14" : "py-14",
+      )}
+    >
+      {status ? (
+        <>
+          <AthleteCharacter
+            status={status}
+            label={status === "rest" ? `Resting ${dateLabel}` : `Injured ${dateLabel}`}
+            className="w-full max-w-[300px]"
+          />
+          {/* Kept for the document outline; the figure is what is seen. */}
+          <h3 className="sr-only">{heading}</h3>
+        </>
+      ) : (
+        <div className="bg-elevated grid size-14 place-items-center rounded-2xl">
+          {isFuture ? (
+            <CalendarPlusIcon className="text-muted-foreground size-6" />
+          ) : (
+            <FlameIcon className="text-muted-foreground size-6" />
+          )}
+        </div>
+      )}
       <div className="space-y-1">
-        <h3 className="text-lg font-bold">
-          {isFuture ? "Nothing planned" : "Nothing logged"} {dateLabel}
-        </h3>
+        {!status && <h3 className="text-lg font-bold">{heading}</h3>}
         <p className="text-muted-foreground mx-auto max-w-xs text-sm">
           {isFuture
             ? "Write the session down now and fill in the result once you've done it."
