@@ -102,7 +102,7 @@ shell: ## Open a shell inside the running web container
 check: typecheck lint build test ## Run every CI gate locally
 
 .PHONY: test
-test: test-barbell test-offline test-percentages test-stats test-share test-season test-day-order test-locations test-scoring test-octiv test-octiv-cache test-strava test-strava-cache test-strava-client test-rules test-sw ## Run all tests
+test: test-barbell test-offline test-percentages test-stats test-share test-season test-day-order test-locations test-scoring test-octiv test-octiv-cache test-strava test-strava-cache test-strava-client test-muscles test-rules test-sw ## Run all tests
 
 .PHONY: test-barbell
 test-barbell: ## Barbell plate loading and warm-up ladders
@@ -159,6 +159,10 @@ test-strava-cache: ## Strava activity cache (TTLs, per-athlete indexing, unusabl
 .PHONY: test-strava-client
 test-strava-client: ## Strava client: unconfigured builds, and the serialised token refresh
 	npm run test:strava-client
+
+.PHONY: test-muscles
+test-muscles: ## Muscle map: workout text parsing, muscle load, period colours
+	npm run test:muscles
 
 .PHONY: test-rules
 test-rules: ## Firestore security-rules tests (starts the emulator if needed)

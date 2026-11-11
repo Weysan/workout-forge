@@ -140,6 +140,26 @@ export async function fetchWorkoutDatesInRange(
   return Array.from(new Set(snapshot.docs.map((d) => d.data().date as string)));
 }
 
+/**
+ * Every workout within a range, whole — the muscle map reads the text of each
+ * one. Same query as `fetchWorkoutDatesInRange`, so it is served from the same
+ * local cache offline.
+ */
+export async function fetchWorkoutsInRange(
+  uid: string,
+  startKey: string,
+  endKey: string,
+): Promise<Workout[]> {
+  const snapshot = await readQuery(
+    query(
+      workoutsCol(uid),
+      where("date", ">=", startKey),
+      where("date", "<=", endKey),
+    ),
+  );
+  return snapshot.docs.map(toWorkout);
+}
+
 export async function fetchWorkout(
   uid: string,
   workoutId: string,

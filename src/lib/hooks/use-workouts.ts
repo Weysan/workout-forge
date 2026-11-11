@@ -9,6 +9,7 @@ import {
   fetchBenchmarkHistory,
   fetchWorkout,
   fetchWorkoutDatesInRange,
+  fetchWorkoutsInRange,
   fetchWorkoutsByDate,
   setDayOrder,
   updateWorkout,
@@ -22,6 +23,8 @@ export const workoutKeys = {
     [...root(uid), "date", dateKey] as const,
   range: (uid: string, startKey: string, endKey: string) =>
     [...root(uid), "range", startKey, endKey] as const,
+  rangeFull: (uid: string, startKey: string, endKey: string) =>
+    [...root(uid), "rangeFull", startKey, endKey] as const,
   single: (uid: string, id: string) => [...root(uid), "single", id] as const,
   benchmark: (uid: string, benchmarkId: string) =>
     [...root(uid), "benchmark", benchmarkId] as const,
@@ -58,6 +61,18 @@ export function useWorkoutDatesInRange(startKey: string, endKey: string) {
   return useQuery<string[]>({
     queryKey: workoutKeys.range(uid ?? "anonymous", startKey, endKey),
     queryFn: () => fetchWorkoutDatesInRange(uid!, startKey, endKey),
+    enabled: Boolean(uid),
+  });
+}
+
+/** Whole workouts in a range — the muscle map. */
+export function useWorkoutsInRange(startKey: string, endKey: string) {
+  const { user } = useAuth();
+  const uid = user?.uid;
+
+  return useQuery<Workout[]>({
+    queryKey: workoutKeys.rangeFull(uid ?? "anonymous", startKey, endKey),
+    queryFn: () => fetchWorkoutsInRange(uid!, startKey, endKey),
     enabled: Boolean(uid),
   });
 }

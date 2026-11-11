@@ -52,6 +52,9 @@ jobs:
       - name: Test barbell plate loading
         run: npm run test:barbell
 
+      - name: Test muscle map parsing
+        run: npm run test:muscles
+
       - name: Build
         # Placeholders are deliberate. This build is a compile check that is never
         # deployed; the deploy workflow rebuilds with the real repository

@@ -18,6 +18,7 @@ import { KG_PER_LB, LB_PER_KG } from "@/lib/units";
 import type { Gender, UnitSystem } from "@/lib/types";
 import { OctivConnectCard } from "@/components/octiv-connect-card";
 import { StravaConnectCard } from "@/components/strava-connect-card";
+import { MuscleMap } from "@/components/muscle-map";
 import { TrainingStats } from "@/components/training-stats";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -182,6 +183,9 @@ export default function ProfilePage() {
         <TabsContent value="you" className="space-y-5">
           {/* --- Habit --- */}
           <TrainingStats />
+
+          {/* --- Muscles --- */}
+          <MuscleMap />
 
           {/* --- Settings --- */}
           <Card>
